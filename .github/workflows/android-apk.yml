@@ -5,6 +5,10 @@ on:
     paths:
       - 'android-native/**'
       - '.github/workflows/android-apk.yml'
+  pull_request:
+    paths:
+      - 'android-native/**'
+      - '.github/workflows/android-apk.yml'
 
 permissions:
   contents: read
