@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: frontier-guide-api
+    runtime: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5.6-luna
+      - key: FRONTIER_CLIENT_TOKEN
+        generateValue: true
+      - key: ALLOWED_ORIGINS
+        value: https://appassets.androidplatform.net
