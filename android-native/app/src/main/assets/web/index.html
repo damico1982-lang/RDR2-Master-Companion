@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#120d09" />
+  <meta name="description" content="Unofficial Red Dead Redemption 2 companion guide with camera help, live updates, and offline tips." />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>Frontier Guide — RDR2 Companion</title>
+</head>
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"><span>FG</span></div>
+        <div class="brand-copy"><strong>Frontier Guide</strong><small>RDR2 Master Companion</small></div>
+      </div>
+      <button id="onlineDot" class="status-pill" aria-label="connection status"><span></span> Offline ready</button>
+    </header>
+
+    <main>
+      <section class="hero panel">
+        <div class="hero-art" aria-hidden="true">
+          <div class="sun"></div>
+          <div class="ridge ridge-far"></div>
+          <div class="ridge ridge-near"></div>
+          <div class="hero-grid"></div>
+        </div>
+        <div class="hero-content">
+          <div class="hero-kicker"><span class="kicker-line"></span><p class="eyebrow">YOUR FRONTIER CO-PILOT</p></div>
+          <h1>See the game.<br/><em>Know the next move.</em></h1>
+          <p class="sub">Instant walkthrough help, hidden discoveries, hunting advice, map guidance, live updates, camera vision, and Android screen capture — built for Story Mode and Online.</p>
+
+          <div class="hero-trust">
+            <span><b>24/7</b> guide access</span>
+            <span><b>Offline</b> knowledge</span>
+            <span><b>Vision</b> ready</span>
+          </div>
+
+          <div class="mode-block">
+            <small>PLAY MODE</small>
+            <div class="mode-row" role="group" aria-label="Game mode">
+              <button class="mode active" data-mode="story">Story Mode</button>
+              <button class="mode" data-mode="online">Online</button>
+              <button class="mode" data-mode="either">Both</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="quick-grid" aria-label="Quick actions">
+        <button class="quick quick-primary" data-view="ask">
+          <span class="quick-icon">✦</span>
+          <div><b>Ask Guide</b><small>Walkthroughs, secrets, missions & locations</small></div>
+          <span class="quick-arrow">›</span>
+        </button>
+        <button class="quick" id="cameraBtn">
+          <span class="quick-icon">◉</span>
+          <div><b>Show Camera</b><small>Point at your TV and ask what you’re seeing</small></div>
+          <span class="quick-arrow">›</span>
+        </button>
+        <button class="quick" id="screenBtn">
+          <span class="quick-icon">▣</span>
+          <div><b>Screen Share</b><small>Use Android capture for direct visual help</small></div>
+          <span class="quick-arrow">›</span>
+        </button>
+        <button class="quick" data-view="updates">
+          <span class="quick-icon">↻</span>
+          <div><b>Live Updates</b><small>Events, fixes, patches & reported issues</small></div>
+          <span class="quick-arrow">›</span>
+        </button>
+      </section>
+
+      <section id="askView" class="view active panel content-panel">
+        <div class="section-head">
+          <div><p class="eyebrow">LIVE COMPANION</p><h2>Ask anything</h2><p class="section-sub">Type it, show it, or attach the latest screen frame.</p></div>
+          <button id="clearChat" class="ghost compact">Clear</button>
+        </div>
+        <div id="chat" class="chat" aria-live="polite">
+          <div class="message assistant welcome-message">
+            <div class="message-avatar">FG</div>
+            <div><b>Frontier Guide</b><p>Show me where you are or tell me what you’re trying to do. I’ll break down the fastest next steps.</p></div>
+          </div>
+        </div>
+        <div id="imagePreviewWrap" class="image-preview hidden"><img id="imagePreview" alt="captured game view"/><button id="removeImage" aria-label="Remove attached image">×</button></div>
+        <form id="askForm" class="composer">
+          <textarea id="question" rows="2" placeholder="Ask about a mission, treasure, horse, legendary animal, challenge..." required></textarea>
+          <div class="composer-row">
+            <label class="toggle"><input id="liveSearch" type="checkbox"/><span class="toggle-ui"></span><span>Use live web for current info</span></label>
+            <button class="send" type="submit">Ask Guide <span>→</span></button>
+          </div>
+        </form>
+      </section>
+
+      <section id="guideView" class="view panel content-panel">
+        <div class="section-head"><div><p class="eyebrow">OFFLINE KNOWLEDGE</p><h2>Master guide</h2><p class="section-sub">Fast answers even when you’re offline.</p></div></div>
+        <div class="search-wrap"><span>⌕</span><input id="guideSearch" class="searchbox" placeholder="Search horses, treasure, hunting, challenges..." /></div>
+        <div id="guideTags" class="tags"></div>
+        <div id="guideResults" class="cards"></div>
+      </section>
+
+      <section id="updatesView" class="view panel content-panel">
+        <div class="section-head"><div><p class="eyebrow">FRESH INTEL</p><h2>Updates & known issues</h2><p class="section-sub">Current events, changes, patch notes and reported problems.</p></div><button id="refreshUpdates" class="send compact">Refresh</button></div>
+        <div class="notice"><span>●</span><p>With the AI server configured, Frontier Guide can scan current sources for Red Dead Online events, Rockstar changes, fixes, and newly reported issues.</p></div>
+        <div id="updatesFeed" class="cards"><article class="card featured-card"><span class="card-icon">✓</span><div><h3>Bundled guide is ready offline</h3><p>Use the Master Guide without a connection. Live update scans require the optional server.</p></div></article></div>
+      </section>
+
+      <section id="settingsView" class="view panel content-panel">
+        <div class="section-head"><div><p class="eyebrow">CONTROL CENTER</p><h2>Settings</h2><p class="section-sub">Connect AI, updates, and optional remote content.</p></div></div>
+        <div class="settings-card">
+          <label class="field"><span>AI server URL</span><input id="apiBase" placeholder="https://your-server.example.com" /></label>
+          <label class="field"><span>Remote content manifest <i>optional</i></span><input id="manifestUrl" placeholder="https://.../manifest.json" /></label>
+          <div class="settings-actions"><button id="saveSettings" class="send">Save settings</button><button id="checkUpdates" class="ghost">Check guide update</button></div>
+          <div id="settingsMsg" class="muted settings-msg"></div>
+        </div>
+        <div class="privacy-card"><span>◈</span><div><b>Privacy first</b><p>Camera and screen images are only sent when you ask a question with an image attached. Android asks for screen-capture permission each session.</p></div></div>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="Primary navigation">
+      <button data-view="ask" class="active"><span>✦</span>Ask</button>
+      <button data-view="guide"><span>⌖</span>Guide</button>
+      <button data-view="updates"><span>↻</span>Updates</button>
+      <button data-view="settings"><span>⚙</span>Settings</button>
+    </nav>
+  </div>
+
+  <dialog id="cameraDialog">
+    <div class="dialog-head"><div><span class="dialog-kicker">LIVE VISION</span><b>Camera View</b></div><button id="closeCamera" aria-label="Close camera">×</button></div>
+    <video id="cameraVideo" autoplay playsinline muted></video>
+    <canvas id="cameraCanvas" class="hidden"></canvas>
+    <div class="dialog-actions"><button id="flipCamera" class="ghost">Flip camera</button><button id="captureCamera" class="send">Use this frame</button></div>
+  </dialog>
+
+  <dialog id="screenDialog">
+    <div class="dialog-head"><div><span class="dialog-kicker">ANDROID VISION</span><b>Screen Share</b></div><button id="closeScreen" aria-label="Close screen share">×</button></div>
+    <div id="screenHelp" class="screen-help"></div>
+    <img id="screenPreview" class="screen-preview hidden" alt="latest screen capture"/>
+    <div class="dialog-actions"><button id="startNativeScreen" class="send">Start Android screen share</button><button id="useScreenFrame" class="ghost hidden">Use latest frame</button></div>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
