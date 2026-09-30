@@ -1,0 +1,17 @@
+{
+  "name": "Frontier Guide — RDR2 Companion",
+  "short_name": "Frontier Guide",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0a0807",
+  "theme_color": "#120d09",
+  "description": "Unofficial RDR2 companion guide with camera assistance and live updates.",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
