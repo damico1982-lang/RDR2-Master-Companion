@@ -113,8 +113,9 @@
       <section id="settingsView" class="view panel content-panel">
         <div class="section-head"><div><p class="eyebrow">CONTROL CENTER</p><h2>Settings</h2><p class="section-sub">Connect AI, updates, and optional remote content.</p></div></div>
         <div class="settings-card">
-          <label class="field"><span>AI server URL</span><input id="apiBase" placeholder="https://your-server.example.com" /></label>
-          <label class="field"><span>Remote content manifest <i>optional</i></span><input id="manifestUrl" placeholder="https://.../manifest.json" /></label>
+          <label class="field"><span>AI server URL</span><input id="apiBase" placeholder="https://your-server.example.com" inputmode="url" autocomplete="off" /></label>
+          <label class="field"><span>Server access key <i>optional</i></span><input id="apiToken" type="password" placeholder="Only needed if your server uses FRONTIER_CLIENT_TOKEN" autocomplete="off" /></label>
+          <label class="field"><span>Remote content manifest <i>optional</i></span><input id="manifestUrl" placeholder="https://.../manifest.json" inputmode="url" autocomplete="off" /></label>
           <div class="settings-actions"><button id="saveSettings" class="send">Save settings</button><button id="checkUpdates" class="ghost">Check guide update</button></div>
           <div id="settingsMsg" class="muted settings-msg"></div>
         </div>
