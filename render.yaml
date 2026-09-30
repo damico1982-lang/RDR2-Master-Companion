@@ -2,16 +2,29 @@ services:
   - type: web
     name: frontier-guide-api
     runtime: node
+    plan: free
+    region: virginia
+    branch: main
     rootDir: server
-    buildCommand: npm install
+    buildCommand: npm ci --omit=dev
     startCommand: npm start
     healthCheckPath: /api/health
+    autoDeployTrigger: checksPass
+    renderSubdomainPolicy: enabled
     envVars:
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_MODEL
-        value: gpt-5.6-luna
+        value: gpt-6-luna
       - key: FRONTIER_CLIENT_TOKEN
         generateValue: true
       - key: ALLOWED_ORIGINS
         value: https://appassets.androidplatform.net
+      - key: NODE_VERSION
+        value: 22.22.0
+      - key: OPENAI_TIMEOUT_MS
+        value: 90000
+      - key: RATE_LIMIT_MAX
+        value: 30
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 60000

@@ -1,15 +1,11 @@
-import express from "express";
+import { timingSafeEqual } from "node:crypto";
+import { pathToFileURL } from "node:url";
 import cors from "cors";
+import express from "express";
 
-const app = express();
-const port = Number(process.env.PORT || 3000);
-const apiKey = process.env.OPENAI_API_KEY || "";
-const model = process.env.OPENAI_MODEL || "gpt-5.6-luna";
-const clientToken = process.env.FRONTIER_CLIENT_TOKEN || "";
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || "")
-  .split(",")
-  .map(x => x.trim())
-  .filter(Boolean);
+const DEFAULT_MODEL = "gpt-6-luna";
+const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
+const APP_VERSION = "1.2.1";
 
 const SYSTEM = `You are Frontier Guide, an unofficial expert companion for Red Dead Redemption 2 and Red Dead Online.
 Give practical, spoiler-aware help unless the player explicitly asks for spoilers.
@@ -18,41 +14,16 @@ Distinguish Story Mode from Online when relevant. Never invent a mission, item, 
 For live/current questions, prefer official Rockstar sources for patches, events, and service changes, and clearly label community-reported bugs or workarounds as unverified when applicable.
 Keep answers direct, useful on a phone, and organized around the player's immediate next step.`;
 
-app.disable("x-powered-by");
-app.use(express.json({ limit: "12mb" }));
-app.use(cors({
-  origin(origin, cb) {
-    if (!origin || !allowedOrigins.length || allowedOrigins.includes(origin)) return cb(null, true);
-    cb(new Error("Origin not allowed"));
-  }
-}));
-app.use((req, res, next) => {
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("Referrer-Policy", "no-referrer");
-  next();
-});
+function positiveInteger(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
 
-const hits = new Map();
-app.use((req, res, next) => {
-  const key = req.ip || "unknown";
-  const now = Date.now();
-  const windowMs = 60_000;
-  const max = 30;
-  const current = hits.get(key) || { count: 0, reset: now + windowMs };
-  if (now > current.reset) {
-    current.count = 0;
-    current.reset = now + windowMs;
-  }
-  current.count += 1;
-  hits.set(key, current);
-  if (current.count > max) return res.status(429).json({ error: "Too many requests. Try again shortly." });
-  next();
-});
-
-function requireClientToken(req, res, next) {
-  if (!clientToken) return next();
-  if (req.get("x-frontier-key") === clientToken) return next();
-  return res.status(401).json({ error: "Invalid app access key." });
+function tokenMatches(provided, expected) {
+  if (!provided || !expected) return false;
+  const left = Buffer.from(String(provided));
+  const right = Buffer.from(String(expected));
+  return left.length === right.length && timingSafeEqual(left, right);
 }
 
 function validImageDataUrl(value) {
@@ -90,98 +61,219 @@ function extractSources(response) {
   return sources.slice(0, 8);
 }
 
-async function createResponse({ question, mode = "story", imageDataUrl, live = false, purpose = "ask" }) {
-  if (!apiKey) {
-    const err = new Error("OPENAI_API_KEY is not configured on the server.");
-    err.status = 503;
-    throw err;
-  }
+export function createApp({ env = process.env, fetchImpl = globalThis.fetch, logger = console } = {}) {
+  const apiKey = String(env.OPENAI_API_KEY || "").trim();
+  const model = String(env.OPENAI_MODEL || DEFAULT_MODEL).trim();
+  const clientToken = String(env.FRONTIER_CLIENT_TOKEN || "").trim();
+  const openaiBaseUrl = String(env.OPENAI_BASE_URL || DEFAULT_OPENAI_BASE_URL).replace(/\/+$/, "");
+  const requestTimeoutMs = positiveInteger(env.OPENAI_TIMEOUT_MS, 90_000);
+  const rateLimitMax = positiveInteger(env.RATE_LIMIT_MAX, 30);
+  const rateLimitWindowMs = positiveInteger(env.RATE_LIMIT_WINDOW_MS, 60_000);
+  const allowedOrigins = String(env.ALLOWED_ORIGINS || "")
+    .split(",")
+    .map(value => value.trim())
+    .filter(Boolean);
 
-  const modeLabel = mode === "online" ? "Red Dead Online" : mode === "either" ? "Story Mode or Online" : "Story Mode";
-  const content = [{
-    type: "input_text",
-    text: purpose === "updates"
-      ? `Give me a concise current update scan for Red Dead Redemption 2 / Red Dead Online as of today. Cover official Rockstar announcements or patch/service changes first, then major actively reported issues or useful workarounds. Separate confirmed information from community reports. Include dates when available.`
-      : `Player mode: ${modeLabel}. Player question: ${question}`
-  }];
-
-  if (imageDataUrl) {
-    content.push({ type: "input_image", image_url: imageDataUrl, detail: "high" });
-  }
-
-  const body = {
-    model,
-    instructions: SYSTEM,
-    input: [{ role: "user", content }],
-    max_output_tokens: purpose === "updates" ? 1200 : 1000
-  };
-
-  if (live) {
-    body.tools = [{ type: "web_search", search_context_size: "medium" }];
-  }
-
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(body)
+  const app = express();
+  app.disable("x-powered-by");
+  app.set("trust proxy", 1);
+  app.use(express.json({ limit: "12mb" }));
+  app.use(cors({
+    origin(origin, callback) {
+      if (!origin || !allowedOrigins.length || allowedOrigins.includes(origin)) return callback(null, true);
+      const error = new Error("Origin not allowed.");
+      error.status = 403;
+      return callback(error);
+    }
+  }));
+  app.use((req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.setHeader("Cache-Control", "no-store");
+    next();
   });
 
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const err = new Error(data?.error?.message || `AI request failed with status ${response.status}`);
-    err.status = response.status;
-    throw err;
+  function clientAuthorized(req) {
+    return !clientToken || tokenMatches(req.get("x-frontier-key"), clientToken);
   }
 
-  return {
-    answer: extractText(data),
-    sources: extractSources(data),
-    model
-  };
+  function requireClientToken(req, res, next) {
+    if (clientAuthorized(req)) return next();
+    return res.status(401).json({ error: "Invalid or missing app access key." });
+  }
+
+  app.get("/api/health", (req, res) => {
+    res.json({
+      ok: true,
+      configured: Boolean(apiKey),
+      model,
+      authRequired: Boolean(clientToken),
+      authorized: clientAuthorized(req),
+      version: APP_VERSION
+    });
+  });
+
+  const hits = new Map();
+  function rateLimit(req, res, next) {
+    const now = Date.now();
+    const key = req.ip || "unknown";
+    const current = hits.get(key) || { count: 0, reset: now + rateLimitWindowMs };
+
+    if (now >= current.reset) {
+      current.count = 0;
+      current.reset = now + rateLimitWindowMs;
+    }
+
+    current.count += 1;
+    hits.set(key, current);
+    res.setHeader("X-RateLimit-Limit", String(rateLimitMax));
+    res.setHeader("X-RateLimit-Remaining", String(Math.max(0, rateLimitMax - current.count)));
+
+    if (hits.size > 5_000) {
+      for (const [storedKey, entry] of hits) {
+        if (entry.reset <= now) hits.delete(storedKey);
+      }
+    }
+
+    if (current.count > rateLimitMax) {
+      res.setHeader("Retry-After", String(Math.ceil((current.reset - now) / 1_000)));
+      return res.status(429).json({ error: "Too many requests. Try again shortly." });
+    }
+    return next();
+  }
+
+  async function createResponse({ question, mode = "story", imageDataUrl, live = false, purpose = "ask" }) {
+    if (!apiKey) {
+      const error = new Error("OPENAI_API_KEY is not configured on the server.");
+      error.status = 503;
+      throw error;
+    }
+
+    const modeLabel = mode === "online"
+      ? "Red Dead Online"
+      : mode === "either"
+        ? "Story Mode or Online"
+        : "Story Mode";
+    const content = [{
+      type: "input_text",
+      text: purpose === "updates"
+        ? "Give me a concise current update scan for Red Dead Redemption 2 and Red Dead Online as of today. Cover official Rockstar announcements, patches, event changes, and service changes first. Then cover major actively reported issues or useful workarounds. Separate confirmed information from community reports and include dates when available."
+        : `Player mode: ${modeLabel}. Player question: ${question}`
+    }];
+
+    if (imageDataUrl) {
+      content.push({ type: "input_image", image_url: imageDataUrl, detail: "high" });
+    }
+
+    const body = {
+      model,
+      instructions: SYSTEM,
+      input: [{ role: "user", content }],
+      max_output_tokens: purpose === "updates" ? 1_200 : 1_000,
+      store: false
+    };
+
+    if (live) body.tools = [{ type: "web_search", search_context_size: "medium" }];
+
+    let response;
+    try {
+      response = await fetchImpl(`${openaiBaseUrl}/responses`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(requestTimeoutMs)
+      });
+    } catch (cause) {
+      const timedOut = cause?.name === "TimeoutError" || cause?.name === "AbortError";
+      const error = new Error(timedOut ? "The AI request timed out. Try again." : "Could not reach the OpenAI API.");
+      error.status = timedOut ? 504 : 502;
+      error.cause = cause;
+      throw error;
+    }
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(data?.error?.message || `AI request failed with status ${response.status}.`);
+      error.status = response.status === 429 ? 429 : 502;
+      throw error;
+    }
+
+    return {
+      answer: extractText(data),
+      sources: extractSources(data),
+      model
+    };
+  }
+
+  app.post("/api/ask", rateLimit, requireClientToken, async (req, res) => {
+    const question = String(req.body?.question || "").trim();
+    const mode = ["story", "online", "either"].includes(req.body?.mode) ? req.body.mode : "story";
+    const imageDataUrl = req.body?.imageDataUrl || null;
+    const live = req.body?.live === true;
+
+    if (!question) return res.status(400).json({ error: "Question is required." });
+    if (question.length > 4_000) return res.status(400).json({ error: "Question is too long." });
+    if (!validImageDataUrl(imageDataUrl)) return res.status(400).json({ error: "Unsupported or oversized image." });
+
+    try {
+      return res.json(await createResponse({ question, mode, imageDataUrl, live }));
+    } catch (error) {
+      logger.error(error);
+      return res.status(error.status || 500).json({ error: error.message || "Server error." });
+    }
+  });
+
+  app.post("/api/live-update", rateLimit, requireClientToken, async (req, res) => {
+    try {
+      return res.json(await createResponse({ question: "", mode: "either", live: true, purpose: "updates" }));
+    } catch (error) {
+      logger.error(error);
+      return res.status(error.status || 500).json({ error: error.message || "Server error." });
+    }
+  });
+
+  app.get("/", (req, res) => {
+    res.json({
+      name: "Frontier Guide API",
+      ok: true,
+      version: APP_VERSION,
+      endpoints: ["/api/health", "/api/ask", "/api/live-update"]
+    });
+  });
+
+  app.use((req, res) => {
+    res.status(404).json({ error: "Endpoint not found." });
+  });
+
+  app.use((error, req, res, next) => {
+    if (res.headersSent) return next(error);
+    const status = Number(error.status || error.statusCode) || 500;
+    if (status >= 500) logger.error(error);
+    return res.status(status).json({ error: status === 500 ? "Server error." : error.message });
+  });
+
+  return app;
 }
 
-app.get("/api/health", requireClientToken, (req, res) => {
-  res.json({ ok: true, configured: Boolean(apiKey), model });
-});
-
-app.post("/api/ask", requireClientToken, async (req, res) => {
-  const question = String(req.body?.question || "").trim();
-  const mode = ["story", "online", "either"].includes(req.body?.mode) ? req.body.mode : "story";
-  const imageDataUrl = req.body?.imageDataUrl || null;
-  const live = Boolean(req.body?.live);
-
-  if (!question) return res.status(400).json({ error: "Question is required." });
-  if (question.length > 4000) return res.status(400).json({ error: "Question is too long." });
-  if (!validImageDataUrl(imageDataUrl)) return res.status(400).json({ error: "Unsupported or oversized image." });
-
-  try {
-    res.json(await createResponse({ question, mode, imageDataUrl, live }));
-  } catch (err) {
-    console.error(err);
-    res.status(err.status || 500).json({ error: err.message || "Server error." });
-  }
-});
-
-app.post("/api/live-update", requireClientToken, async (req, res) => {
-  try {
-    res.json(await createResponse({ question: "", mode: "either", live: true, purpose: "updates" }));
-  } catch (err) {
-    console.error(err);
-    res.status(err.status || 500).json({ error: err.message || "Server error." });
-  }
-});
-
-app.get("/", (req, res) => {
-  res.json({
-    name: "Frontier Guide API",
-    ok: true,
-    endpoints: ["/api/health", "/api/ask", "/api/live-update"]
+export function startServer({ env = process.env, logger = console } = {}) {
+  const port = positiveInteger(env.PORT, 3_000);
+  const app = createApp({ env, logger });
+  const server = app.listen(port, () => {
+    logger.log(`Frontier Guide API v${APP_VERSION} listening on port ${port}`);
   });
-});
 
-app.listen(port, () => {
-  console.log(`Frontier Guide API listening on port ${port}`);
-});
+  const shutdown = signal => {
+    logger.log(`${signal} received; closing HTTP server.`);
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(1), 10_000).unref();
+  };
+  process.once("SIGTERM", () => shutdown("SIGTERM"));
+  process.once("SIGINT", () => shutdown("SIGINT"));
+  return server;
+}
+
+const isDirectRun = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isDirectRun) startServer();

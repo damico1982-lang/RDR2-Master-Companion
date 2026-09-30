@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <meta name="theme-color" content="#120d09" />
+  <meta name="theme-color" content="#130b0b" />
   <meta name="description" content="Unofficial Red Dead Redemption 2 companion guide with camera help, live updates, and offline tips." />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
@@ -30,10 +30,11 @@
           <div class="ridge ridge-far"></div>
           <div class="ridge ridge-near"></div>
           <div class="hero-grid"></div>
+          <div class="rider-mark"><span></span></div>
         </div>
         <div class="hero-content">
-          <div class="hero-kicker"><span class="kicker-line"></span><p class="eyebrow">YOUR FRONTIER CO-PILOT</p></div>
-          <h1>See the game.<br/><em>Know the next move.</em></h1>
+          <div class="hero-kicker"><span class="kicker-line"></span><p class="eyebrow">FIELD COMPANION</p></div>
+          <h1>Ride prepared.<br/><em>Know every trail.</em></h1>
           <p class="sub">Instant walkthrough help, hidden discoveries, hunting advice, map guidance, live updates, camera vision, and Android screen capture — built for Story Mode and Online.</p>
 
           <div class="hero-trust">
@@ -113,10 +114,11 @@
       <section id="settingsView" class="view panel content-panel">
         <div class="section-head"><div><p class="eyebrow">CONTROL CENTER</p><h2>Settings</h2><p class="section-sub">Connect AI, updates, and optional remote content.</p></div></div>
         <div class="settings-card">
-          <label class="field"><span>AI server URL</span><input id="apiBase" placeholder="https://your-server.example.com" inputmode="url" autocomplete="off" /></label>
+          <div class="setup-note"><b>Live AI setup</b><p>Use the HTTPS service URL only—do not add <code>/api</code> or an endpoint name.</p></div>
+          <label class="field"><span>AI server URL</span><input id="apiBase" placeholder="https://frontier-guide-api.onrender.com" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" /></label>
           <label class="field"><span>Server access key <i>optional</i></span><input id="apiToken" type="password" placeholder="Only needed if your server uses FRONTIER_CLIENT_TOKEN" autocomplete="off" /></label>
-          <label class="field"><span>Remote content manifest <i>optional</i></span><input id="manifestUrl" placeholder="https://.../manifest.json" inputmode="url" autocomplete="off" /></label>
-          <div class="settings-actions"><button id="saveSettings" class="send">Save settings</button><button id="checkUpdates" class="ghost">Check guide update</button></div>
+          <label class="field"><span>Remote content manifest <i>optional</i></span><input id="manifestUrl" placeholder="https://.../manifest.json" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" /></label>
+          <div class="settings-actions"><button id="saveSettings" class="send">Save &amp; test connection</button><button id="checkUpdates" class="ghost">Check guide update</button></div>
           <div id="settingsMsg" class="muted settings-msg"></div>
         </div>
         <div class="privacy-card"><span>◈</span><div><b>Privacy first</b><p>Camera and screen images are only sent when you ask a question with an image attached. Android asks for screen-capture permission each session.</p></div></div>

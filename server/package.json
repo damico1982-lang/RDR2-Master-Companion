@@ -1,12 +1,14 @@
 {
   "name": "frontier-guide-backend",
-  "version": "1.0.0",
+  "version": "1.2.1",
+  "description": "Protected live AI backend for the Frontier Guide Android companion",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": { "node": ">=22 <25" },
   "scripts": {
     "start": "node server.mjs",
-    "check": "node --check server.mjs"
+    "check": "node --check server.mjs && node --check test/server.test.mjs",
+    "test": "node --test"
   },
   "dependencies": {
     "cors": "^2.8.5",
