@@ -1,0 +1,11 @@
+node_modules/
+server/.env
+server/.env.*
+!server/.env.example
+*.log
+
+android-native/.gradle/
+android-native/local.properties
+android-native/**/build/
+
+.DS_Store

@@ -30,11 +30,34 @@ class MainActivity: AppCompatActivity() {
         web.settings.javaScriptEnabled=true
         web.settings.domStorageEnabled=true
         web.settings.mediaPlaybackRequiresUserGesture=false
+        web.settings.allowFileAccess=false
+        web.settings.allowContentAccess=false
+        web.settings.javaScriptCanOpenWindowsAutomatically=false
+        web.settings.mixedContentMode=WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        web.settings.safeBrowsingEnabled=true
         web.webViewClient=object:WebViewClient(){
             override fun shouldInterceptRequest(view:WebView?,request:WebResourceRequest?)=request?.url?.let{loader.shouldInterceptRequest(it)}
+            override fun shouldOverrideUrlLoading(view:WebView?,request:WebResourceRequest?):Boolean {
+                val uri=request?.url ?: return false
+                if(uri.scheme=="https" && uri.host=="appassets.androidplatform.net")return false
+                return try {
+                    startActivity(Intent(Intent.ACTION_VIEW,uri))
+                    true
+                } catch(_:ActivityNotFoundException) {
+                    Toast.makeText(this@MainActivity,"No app can open this link",Toast.LENGTH_SHORT).show()
+                    true
+                }
+            }
         }
         web.webChromeClient=object:WebChromeClient(){
-            override fun onPermissionRequest(request:PermissionRequest?){ runOnUiThread{ request?.grant(request.resources) } }
+            override fun onPermissionRequest(request:PermissionRequest?){
+                runOnUiThread{
+                    val origin=request?.origin
+                    val trusted=origin?.scheme=="https" && origin?.host=="appassets.androidplatform.net"
+                    val cameraOnly=request?.resources?.filter{it==PermissionRequest.RESOURCE_VIDEO_CAPTURE}?.toTypedArray() ?: emptyArray<String>()
+                    if(trusted && cameraOnly.isNotEmpty())request?.grant(cameraOnly) else request?.deny()
+                }
+            }
         }
         web.addJavascriptInterface(Bridge(),"AndroidBridge")
         web.loadUrl("https://appassets.androidplatform.net/assets/web/index.html")
@@ -57,7 +80,7 @@ class MainActivity: AppCompatActivity() {
 
     private fun requestNeededPermissions(){
         val need=mutableListOf<String>()
-        for(p in listOf(Manifest.permission.CAMERA,Manifest.permission.RECORD_AUDIO))if(ContextCompat.checkSelfPermission(this,p)!=PackageManager.PERMISSION_GRANTED)need+=p
+        for(p in listOf(Manifest.permission.CAMERA))if(ContextCompat.checkSelfPermission(this,p)!=PackageManager.PERMISSION_GRANTED)need+=p
         if(android.os.Build.VERSION.SDK_INT>=33 && ContextCompat.checkSelfPermission(this,Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)need+=Manifest.permission.POST_NOTIFICATIONS
         if(need.isNotEmpty())ActivityCompat.requestPermissions(this,need.toTypedArray(),44)
     }

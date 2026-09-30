@@ -24,8 +24,10 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: server/package.json
+          cache-dependency-path: server/package-lock.json
       - name: Install backend dependencies
-        run: npm install --prefix server
+        run: npm ci --prefix server
       - name: Syntax check
         run: npm run check --prefix server
+      - name: API integration tests
+        run: npm test --prefix server
