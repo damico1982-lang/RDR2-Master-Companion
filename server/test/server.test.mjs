@@ -74,6 +74,25 @@ test("GET /api/health stays public for Render and reports readiness", async () =
   });
 });
 
+test("GET / serves the installable Frontier Guide web app", async () => {
+  const app = createApp({ logger: silentLogger });
+
+  await withServer(app, async baseUrl => {
+    const page = await fetch(`${baseUrl}/`);
+    assert.equal(page.status, 200);
+    assert.match(page.headers.get("content-type"), /text\/html/);
+    assert.match(await page.text(), /Frontier Guide — RDR2 Companion/);
+
+    const script = await fetch(`${baseUrl}/app.js`);
+    assert.equal(script.status, 200);
+    assert.match(await script.text(), /hostedApiBase/);
+
+    const api = await fetch(`${baseUrl}/api`);
+    assert.equal(api.status, 200);
+    assert.deepEqual((await api.json()).endpoints, ["/api/health", "/api/ask", "/api/live-update"]);
+  });
+});
+
 test("protected routes reject a missing app access key", async () => {
   const app = createApp({
     env: { OPENAI_API_KEY: "test-key", FRONTIER_CLIENT_TOKEN: "frontier-secret" },
@@ -180,5 +199,10 @@ test("input, configuration, and CORS failures return JSON", async () => {
     });
     assert.equal(forbiddenOrigin.status, 403);
     assert.equal((await forbiddenOrigin.json()).error, "Origin not allowed.");
+
+    const sameOrigin = await fetch(`${baseUrl}/api/health`, {
+      headers: { origin: baseUrl }
+    });
+    assert.equal(sameOrigin.status, 200);
   });
 });
