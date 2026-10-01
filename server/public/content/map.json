@@ -1,0 +1,178 @@
+[
+  {
+    "id": "limpany-gold",
+    "category": "Gold",
+    "mode": "story",
+    "title": "Limpany sheriff's office gold bar",
+    "region": "New Hanover — south of Horseshoe Overlook",
+    "x": 53,
+    "y": 55,
+    "directions": "Ride to the burned settlement of Limpany, enter the ruined sheriff's office, and inspect the lockbox beneath the desk.",
+    "note": "Story Mode only. Sell the bar to a Fence after Fence services are unlocked. Do not confuse this with an Online gold spawn."
+  },
+  {
+    "id": "train-wreck-gold",
+    "category": "Gold",
+    "mode": "story",
+    "title": "Granite Pass train wreck — two gold bars",
+    "region": "Ambarino — southwest of Cotorra Springs",
+    "x": 55,
+    "y": 22,
+    "directions": "Approach the ravine near Granite Pass, descend carefully to the wreck, climb through the tilted cars, and reach the upright car lodged below the cliff.",
+    "note": "Story Mode only. The climb is easy to miss and a fall can kill Arthur, so make a manual save first."
+  },
+  {
+    "id": "strange-statues",
+    "category": "Gold",
+    "mode": "story",
+    "title": "Strange Statues puzzle — three gold bars",
+    "region": "Ambarino — cave east of Donner Falls",
+    "x": 64,
+    "y": 20,
+    "directions": "Find the hidden cave entrance near the mysterious hill home area. In the statue room, use the finger-count clue and press the prime-number statues: 2, 3, 5, and 7.",
+    "note": "Story Mode only. The center statue opens after the correct buttons are active; rear buttons reset mistakes."
+  },
+  {
+    "id": "braithwaite-gold",
+    "category": "Gold",
+    "mode": "story",
+    "title": "Braithwaite Manor ruins gold bar",
+    "region": "Lemoyne — south of Rhodes",
+    "x": 76,
+    "y": 80,
+    "directions": "Return to the burned manor after the Chapter 3 story events and search the ruined interior for the lockbox.",
+    "note": "Story Mode only and story-gated. The bar is not available before the manor is destroyed."
+  },
+  {
+    "id": "jack-hall-final",
+    "category": "Treasure",
+    "mode": "story",
+    "title": "Jack Hall Gang treasure — two gold bars",
+    "region": "Ambarino — O'Creagh's Run",
+    "x": 69,
+    "y": 31,
+    "directions": "Begin with Maximo near Flatneck Station, follow the Caliban's Seat and Cotorra Springs maps, then search beneath the rock on the small island in O'Creagh's Run.",
+    "note": "Story Mode treasure chain. The final cache is not meant to be collected without progressing through its maps."
+  },
+  {
+    "id": "high-stakes-final",
+    "category": "Treasure",
+    "mode": "story",
+    "title": "High Stakes treasure — three gold bars",
+    "region": "New Hanover — cliffs northeast of Fort Wallace",
+    "x": 63,
+    "y": 36,
+    "directions": "Obtain the first map from the roaming treasure hunter, solve Cumberland Falls and Barrow Lagoon, then follow the narrow cliff ledges and low overhang near Fort Wallace.",
+    "note": "Story Mode treasure chain. Use a manual save before the final cliff route."
+  },
+  {
+    "id": "poisonous-trail-final",
+    "category": "Treasure",
+    "mode": "story",
+    "title": "Poisonous Trail treasure — four gold bars",
+    "region": "New Hanover — Elysian Pool cave",
+    "x": 79,
+    "y": 43,
+    "directions": "Start with the map in the Cairn Lake cabin, solve the Face Rock and serpent mound clues, then enter behind the Elysian Pool waterfall and navigate the cave to the final chamber.",
+    "note": "Story Mode treasure chain. Bring a lantern and save before the cave because the drops and passages are easy to misread."
+  },
+  {
+    "id": "landmarks-riches-final",
+    "category": "Treasure",
+    "mode": "story",
+    "title": "Landmarks of Riches — six gold bars",
+    "region": "West Elizabeth — Mount Shann sundial",
+    "x": 36,
+    "y": 43,
+    "directions": "Start at the obelisk northwest of Owanjila, follow the landmark clues across the world, then inspect the stone sundial at the top of Mount Shann.",
+    "note": "Story Mode treasure chain added to later game versions. Six bars are in the final cache."
+  },
+  {
+    "id": "emerald-ranch-fence",
+    "category": "Services",
+    "mode": "either",
+    "title": "Emerald Ranch Fence",
+    "region": "New Hanover — Emerald Ranch",
+    "x": 68,
+    "y": 48,
+    "directions": "Go to the wagon barn on the south side of Emerald Ranch. In Story Mode, Fence access opens through early Chapter 2 progression.",
+    "note": "Use Fences to sell gold bars and stolen valuables. Availability and inventory differ between Story Mode and Online."
+  },
+  {
+    "id": "saint-denis-fence",
+    "category": "Services",
+    "mode": "either",
+    "title": "Saint Denis Fence",
+    "region": "Lemoyne — Saint Denis market district",
+    "x": 89,
+    "y": 69,
+    "directions": "Enter Saint Denis and look for the Fence icon in the eastern market area near the trapper district.",
+    "note": "A convenient place to sell valuables while handling city shopping and crafting."
+  },
+  {
+    "id": "rhodes-fence",
+    "category": "Services",
+    "mode": "either",
+    "title": "Rhodes Fence",
+    "region": "Lemoyne — Rhodes",
+    "x": 75,
+    "y": 69,
+    "directions": "Look for the Fence icon on the northeast side of Rhodes, away from the main general-store block.",
+    "note": "Sell jewelry, watches, belt buckles, and other valuables; exact inventory differs by mode."
+  },
+  {
+    "id": "aberdeen-stash",
+    "category": "Money",
+    "mode": "story",
+    "title": "Aberdeen Pig Farm recovery stash",
+    "region": "Lemoyne — southeast of Emerald Ranch",
+    "x": 75,
+    "y": 56,
+    "directions": "If the Aberdeen encounter takes Arthur's money, return and inspect behind the portrait of the old woman near the front entrance to recover the stash.",
+    "note": "Story Mode encounter. This marker is for recovering money taken during the event, not a repeatable free-cash spawn."
+  },
+  {
+    "id": "online-treasure-maps",
+    "category": "Online Gold",
+    "mode": "online",
+    "title": "Online treasure-map search areas",
+    "region": "Red Dead Online — location changes with each map",
+    "x": 49,
+    "y": 63,
+    "directions": "Open the treasure map from your satchel, travel to the highlighted search zone, then use Eagle Eye and listen for the treasure-chest sound while checking rocks, trees, ruins, and ledges.",
+    "note": "Online maps award gold nuggets, cash, and items. The chest position is selected from multiple possible spots, so ask Frontier about the exact named map shown on your screen."
+  },
+  {
+    "id": "online-bounty-board",
+    "category": "Online Gold",
+    "mode": "online",
+    "title": "Bounty boards — repeatable gold activity",
+    "region": "Red Dead Online — towns and stations",
+    "x": 59,
+    "y": 47,
+    "directions": "Use a bounty board after purchasing the Bounty Hunter license. Bring targets in alive when practical and follow the mission timer and objective text.",
+    "note": "Bounty Hunter is the specialist role built around repeatable gold payouts. Limited-time bonuses can change, so use Live Updates for current rates."
+  },
+  {
+    "id": "online-collector-routes",
+    "category": "Valuables",
+    "mode": "online",
+    "title": "Collector jewelry and sets",
+    "region": "Red Dead Online — rotating world locations",
+    "x": 82,
+    "y": 52,
+    "directions": "Use the Collector role tools, search with Eagle Eye, and sell complete sets to Madam Nazar when practical. Ask Frontier to check the current cycle before starting a route.",
+    "note": "Jewelry and collectible spawns rotate. This app should verify current information instead of pretending a static marker is always correct."
+  },
+  {
+    "id": "online-dailies",
+    "category": "Online Gold",
+    "mode": "online",
+    "title": "Daily Challenges and Awards",
+    "region": "Red Dead Online — Progress menu",
+    "x": 40,
+    "y": 29,
+    "directions": "Open the Player menu or Progress menu, review today's general and role challenges, then group nearby objectives into one route. Reset eligible completed Awards for additional gold when available.",
+    "note": "Daily objectives and event bonuses change. Frontier uses live search for the current list and should label any community-reported route information."
+  }
+]

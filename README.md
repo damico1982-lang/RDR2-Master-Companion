@@ -1,16 +1,18 @@
 # RDR2 Master Companion
 
-Frontier Guide is an unofficial, phone-first companion for Red Dead Redemption 2 and Red Dead Online. Android v1.2.1 combines an offline master guide with optional live AI, camera questions, Android screen capture, and current web-update scans.
+Frontier Guide is an unofficial, phone-first companion for Red Dead Redemption 2 and Red Dead Online. Android v1.3.0 combines a hands-free call-and-response guide, offline knowledge, live AI, photo uploads, front/rear camera coaching, Android screen capture, a built-in field map, and current web-update scans.
 
-The same themed interface is also served as an installable web app from the live Render URL. Open `https://frontier-guide-api.onrender.com`, paste the Render-generated access key once in Settings, and use the guide directly in a mobile or desktop browser. Browser camera mode works over HTTPS; Android screen capture remains exclusive to the APK.
+The same themed interface is also served as an installable web app from the live Render URL. Open `https://frontier-guide-api.onrender.com` to use it in a mobile or desktop browser. First-party web and Android clients connect automatically; the shared access key remains available for CLI or other authorized clients. Browser camera and voice modes work over HTTPS; Android screen capture remains exclusive to the APK.
 
 The interface uses an original black, blood-red, parchment, and weathered-leather frontier theme. No Rockstar artwork or game assets are bundled.
 
 ## What is included
 
 - Story Mode, Online, and combined guide modes
+- call-and-response voice input, spoken answers, memory, and optional continuous Hands-Free mode
 - offline searchable guide content
-- camera capture and Android latest-screen-frame questions
+- photo/screenshot uploads, front/rear camera capture, live camera coaching, and Android latest-screen-frame questions
+- built-in schematic map for gold, treasure chains, valuables, Online gold activities, and Fence services
 - protected OpenAI Responses API backend
 - optional live web search with returned source links
 - Render Blueprint deployment
@@ -59,17 +61,17 @@ If Render assigns a different public hostname, use the exact URL displayed on th
 
 `OPENAI_BASE_URL` is an optional test/proxy override. Production defaults to `https://api.openai.com/v1`.
 
-## Exact Android Settings values
+## Android connection settings
 
-Open **Frontier Guide → Settings** and enter:
+Version 1.3.0 fills the hosted server URL automatically. Settings remain available for diagnostics or a custom deployment:
 
 | Android field | Value |
 |---|---|
 | AI server URL | `https://frontier-guide-api.onrender.com` or the exact public URL shown by Render |
-| Server access key | Exact value of Render's `FRONTIER_CLIENT_TOKEN` |
+| Server access key | Normally leave blank in the official web app and APK; required for CLI or non-first-party clients |
 | Remote content manifest | Leave blank unless a separate guide manifest has been hosted |
 
-Use only the HTTPS base URL. Do not append `/api`, `/api/health`, `/api/ask`, or `/api/live-update`. Tap **Save & test connection**. A successful setup shows **AI connected**. The app now distinguishes an unreachable server, a missing OpenAI key, and a missing or incorrect access key.
+Use only the HTTPS base URL. Do not append `/api`, `/api/health`, `/api/ask`, or `/api/live-update`. Tap **Save & test connection**. A successful setup shows **AI connected**.
 
 ## Endpoint verification
 
@@ -120,10 +122,10 @@ npm test
 OPENAI_API_KEY="your-key" FRONTIER_CLIENT_TOKEN="local-key" npm start
 ```
 
-The five integration tests cover the public health probe, protected routes, Responses API request shape, live-search behavior, validation, configuration errors, and CORS.
+The seven integration tests cover the public health probe, protected routes, automatic first-party access, conversation context, Responses API request shape, live-search behavior, validation, configuration errors, and CORS.
 
 ## Build Android APK
 
 Run the **Build Android APK** GitHub Actions workflow. The downloadable artifact is named `Frontier-Guide-debug-apk`.
 
-The app requires HTTPS for remote backends. The OpenAI key stays server-side; only the shared `FRONTIER_CLIENT_TOKEN` is entered in the app.
+The app requires HTTPS for remote backends. The OpenAI key always stays server-side.
