@@ -55,6 +55,11 @@
       </section>
 
       <section class="quick-grid" aria-label="Quick actions">
+        <button class="quick quick-primary" id="voiceBtn" data-view="voice">
+          <span class="quick-icon">◉</span>
+          <div><b>Call &amp; Response</b><small>Talk naturally and hear every answer</small></div>
+          <span class="quick-arrow">›</span>
+        </button>
         <button class="quick quick-primary" data-view="ask">
           <span class="quick-icon">✦</span>
           <div><b>Ask Guide</b><small>Walkthroughs, secrets, missions & locations</small></div>
@@ -70,11 +75,35 @@
           <div><b>Screen Share</b><small>Use Android capture for direct visual help</small></div>
           <span class="quick-arrow">›</span>
         </button>
+        <button class="quick" data-view="map">
+          <span class="quick-icon">⌖</span>
+          <div><b>Field Map</b><small>Gold, treasure, valuables &amp; key services</small></div>
+          <span class="quick-arrow">›</span>
+        </button>
         <button class="quick" data-view="updates">
           <span class="quick-icon">↻</span>
           <div><b>Live Updates</b><small>Events, fixes, patches & reported issues</small></div>
           <span class="quick-arrow">›</span>
         </button>
+      </section>
+
+      <section id="voiceView" class="view panel content-panel">
+        <div class="section-head">
+          <div><p class="eyebrow">HANDS-FREE TRAIL GUIDE</p><h2>Call &amp; Response</h2><p class="section-sub">Speak your question. Frontier answers out loud and remembers your follow-up.</p></div>
+          <button id="stopVoice" class="ghost compact">Stop</button>
+        </div>
+        <div class="voice-stage">
+          <button id="talkBtn" class="voice-orb" aria-label="Start voice question"><span class="voice-rings"></span><strong>MIC</strong></button>
+          <div class="voice-copy">
+            <b id="voiceStatus">Tap the microphone and talk</b>
+            <p id="voiceTranscript">Try: “Where is the closest gold bar?” or “What should I do next?”</p>
+          </div>
+        </div>
+        <div class="voice-controls">
+          <button id="handsFreeBtn" class="ghost">Hands-Free: Off</button>
+          <label class="toggle"><input id="autoSpeak" type="checkbox" checked/><span class="toggle-ui"></span><span>Read every answer aloud</span></label>
+        </div>
+        <div class="notice voice-notice"><span>●</span><p>Hands-Free mode listens again only after Frontier finishes speaking, so its own voice will not trigger another question. Tap Stop at any time.</p></div>
       </section>
 
       <section id="askView" class="view active panel content-panel">
@@ -91,11 +120,31 @@
         <div id="imagePreviewWrap" class="image-preview hidden"><img id="imagePreview" alt="captured game view"/><button id="removeImage" aria-label="Remove attached image">×</button></div>
         <form id="askForm" class="composer">
           <textarea id="question" rows="2" placeholder="Ask about a mission, treasure, horse, legendary animal, challenge..." required></textarea>
+          <div class="attachment-row">
+            <button id="uploadImageBtn" class="ghost compact" type="button">Upload screenshot or photo</button>
+            <button id="analyzeImageBtn" class="ghost compact hidden" type="button">Analyze attached image</button>
+            <input id="imageUpload" class="hidden" type="file" accept="image/jpeg,image/png,image/webp,image/gif" />
+          </div>
           <div class="composer-row">
             <label class="toggle"><input id="liveSearch" type="checkbox"/><span class="toggle-ui"></span><span>Use live web for current info</span></label>
             <button class="send" type="submit">Ask Guide <span>→</span></button>
           </div>
         </form>
+      </section>
+
+      <section id="mapView" class="view panel content-panel">
+        <div class="section-head"><div><p class="eyebrow">FRONTIER FIELD MAP</p><h2>Treasure &amp; valuables</h2><p class="section-sub">A built-in regional guide for high-value finds and important services.</p></div></div>
+        <div class="notice"><span>●</span><p>This is an original schematic companion map, not a one-to-one copy of Rockstar’s game map. Tap a marker for directions, requirements, mode restrictions, and a spoken route.</p></div>
+        <div id="mapTags" class="tags"></div>
+        <div class="field-map" id="fieldMap" role="img" aria-label="Schematic Red Dead Redemption 2 regions and guide markers">
+          <div class="map-region region-west">NEW<br/>AUSTIN</div>
+          <div class="map-region region-plains">WEST<br/>ELIZABETH</div>
+          <div class="map-region region-heartlands">NEW<br/>HANOVER</div>
+          <div class="map-region region-north">AMBARINO</div>
+          <div class="map-region region-south">LEMOYNE</div>
+          <div id="mapMarkers" class="map-markers"></div>
+        </div>
+        <article id="mapDetail" class="card map-detail"><h3>Select a marker</h3><p>Choose Gold, Treasure, Money, Valuables, or Services above, then tap a numbered marker.</p></article>
       </section>
 
       <section id="guideView" class="view panel content-panel">
@@ -127,6 +176,7 @@
 
     <nav class="bottom-nav" aria-label="Primary navigation">
       <button data-view="ask" class="active"><span>✦</span>Ask</button>
+      <button data-view="voice"><span>◉</span>Talk</button>
       <button data-view="guide"><span>⌖</span>Guide</button>
       <button data-view="updates"><span>↻</span>Updates</button>
       <button data-view="settings"><span>⚙</span>Settings</button>
@@ -137,14 +187,14 @@
     <div class="dialog-head"><div><span class="dialog-kicker">LIVE VISION</span><b>Camera View</b></div><button id="closeCamera" aria-label="Close camera">×</button></div>
     <video id="cameraVideo" autoplay playsinline muted></video>
     <canvas id="cameraCanvas" class="hidden"></canvas>
-    <div class="dialog-actions"><button id="flipCamera" class="ghost">Flip camera</button><button id="captureCamera" class="send">Use this frame</button></div>
+    <div class="dialog-actions"><button id="flipCamera" class="ghost">Flip camera</button><button id="liveCoachCamera" class="ghost">Start Live Coach</button><button id="captureCamera" class="send">Use this frame</button></div>
   </dialog>
 
   <dialog id="screenDialog">
     <div class="dialog-head"><div><span class="dialog-kicker">ANDROID VISION</span><b>Screen Share</b></div><button id="closeScreen" aria-label="Close screen share">×</button></div>
     <div id="screenHelp" class="screen-help"></div>
     <img id="screenPreview" class="screen-preview hidden" alt="latest screen capture"/>
-    <div class="dialog-actions"><button id="startNativeScreen" class="send">Start Android screen share</button><button id="useScreenFrame" class="ghost hidden">Use latest frame</button></div>
+    <div class="dialog-actions"><button id="startNativeScreen" class="send">Start Android screen share</button><button id="useScreenFrame" class="ghost hidden">Use latest frame</button><button id="analyzeScreenFrame" class="ghost hidden">Analyze &amp; speak</button></div>
   </dialog>
 
   <script src="app.js"></script>

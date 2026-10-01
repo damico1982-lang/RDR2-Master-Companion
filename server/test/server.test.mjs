@@ -63,7 +63,7 @@ test("GET /api/health stays public for Render and reports readiness", async () =
       model: "gpt-6-luna",
       authRequired: true,
       authorized: false,
-      version: "1.2.1"
+      version: "1.3.0"
     });
 
     const authenticated = await fetch(`${baseUrl}/api/health`, {
@@ -113,6 +113,39 @@ test("protected routes reject a missing app access key", async () => {
   });
 });
 
+test("first-party Android and hosted web clients work without manual token entry", async () => {
+  const calls = [];
+  const app = createApp({
+    env: {
+      OPENAI_API_KEY: "test-key",
+      FRONTIER_CLIENT_TOKEN: "frontier-secret",
+      ALLOWED_ORIGINS: "https://appassets.androidplatform.net"
+    },
+    fetchImpl: mockOpenAI(calls),
+    logger: silentLogger
+  });
+
+  await withServer(app, async baseUrl => {
+    const android = await fetch(`${baseUrl}/api/ask`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://appassets.androidplatform.net"
+      },
+      body: JSON.stringify({ question: "What should I do next?", mode: "online" })
+    });
+    assert.equal(android.status, 200);
+
+    const hosted = await fetch(`${baseUrl}/api/ask`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: baseUrl },
+      body: JSON.stringify({ question: "Where is the treasure?" })
+    });
+    assert.equal(hosted.status, 200);
+    assert.equal(calls.length, 2);
+  });
+});
+
 test("POST /api/ask sends vision-ready Responses API input", async () => {
   const calls = [];
   const app = createApp({
@@ -136,7 +169,11 @@ test("POST /api/ask sends vision-ready Responses API input", async () => {
         question: "What am I looking at?",
         mode: "story",
         imageDataUrl: "data:image/jpeg;base64,YQ==",
-        live: true
+        live: true,
+        history: [
+          { role: "user", content: "I am near Valentine." },
+          { role: "assistant", content: "Head toward the station." }
+        ]
       })
     });
 
@@ -152,6 +189,8 @@ test("POST /api/ask sends vision-ready Responses API input", async () => {
     assert.equal(calls[0].body.store, false);
     assert.deepEqual(calls[0].body.tools, [{ type: "web_search", search_context_size: "medium" }]);
     assert.equal(calls[0].body.input[0].content[1].type, "input_image");
+    assert.match(calls[0].body.input[0].content[0].text, /Recent call-and-response context/);
+    assert.match(calls[0].body.input[0].content[0].text, /near Valentine/);
   });
 });
 

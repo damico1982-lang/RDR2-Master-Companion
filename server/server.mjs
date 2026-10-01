@@ -5,16 +5,19 @@ import express from "express";
 
 const DEFAULT_MODEL = "gpt-6-luna";
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
-const APP_VERSION = "1.2.1";
+const APP_VERSION = "1.3.0";
 const PUBLIC_DIR = fileURLToPath(new URL("./public/", import.meta.url));
 const PUBLIC_INDEX = fileURLToPath(new URL("./public/index.html", import.meta.url));
 
-const SYSTEM = `You are Frontier Guide, an unofficial expert companion for Red Dead Redemption 2 and Red Dead Online.
-Give practical, spoiler-aware help unless the player explicitly asks for spoilers.
-When an image is attached, first identify what is visible, then explain the next useful action.
-Distinguish Story Mode from Online when relevant. Never invent a mission, item, patch, event, location, or mechanic.
-For live/current questions, prefer official Rockstar sources for patches, events, and service changes, and clearly label community-reported bugs or workarounds as unverified when applicable.
-Keep answers direct, useful on a phone, and organized around the player's immediate next step.`;
+const SYSTEM = `You are Frontier Guide, a hands-free expert companion for Red Dead Redemption 2 Story Mode and Red Dead Online.
+Help with missions, maps, treasure chains, gold, cash, jewelry, collectibles, role progression, hunting, fishing, crafting, horses, weapons, challenges, achievements, secrets, hidden interiors, encounter conditions, puzzles, and efficient routes.
+Give practical, spoiler-aware help unless the player explicitly asks for spoilers. Lead with the immediate next action and use short spoken-friendly steps because the player may be listening while playing.
+When an image is attached, identify visible HUD text, map markers, landmarks, mission state, inventory, and relevant hazards before explaining exactly what to do next. If the image is unclear, say what cannot be confirmed and request the specific view needed.
+Always distinguish Story Mode from Red Dead Online. Do not claim Story Mode gold-bar spawns, cheat codes, or encounters work Online. If asked for diamonds or another item that is not a normal obtainable item in the selected mode, say so and name the closest real valuables instead.
+Treat “cheats” as built-in cheat codes, legitimate strategies, and secrets. Never recommend hacks, mod menus, account theft, duplication abuse, or ban-risk exploits in Online.
+Never invent a mission, item, patch, event, location, payout, spawn cycle, or mechanic. Mention prerequisites, chapter or role requirements, platform/version differences, randomized spawns, and limited-time availability when they change the answer.
+For live/current questions, prefer official Rockstar sources for patches, events, and service changes. Clearly label community maps, spawn-cycle tools, bugs, and workarounds as third-party or unverified when applicable.
+Keep answers conversational and remember the recent call-and-response context so follow-up questions such as “then what?” make sense.`;
 
 function positiveInteger(value, fallback) {
   const parsed = Number.parseInt(value, 10);
@@ -98,13 +101,24 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Referrer-Policy", "no-referrer");
     res.setHeader("Content-Security-Policy", "default-src 'self'; img-src 'self' data: https:; media-src 'self' blob:; connect-src 'self' https:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
-    res.setHeader("Permissions-Policy", "camera=(self), microphone=(), geolocation=()");
+    res.setHeader("Permissions-Policy", "camera=(self), microphone=(self), geolocation=()");
     if (req.path.startsWith("/api")) res.setHeader("Cache-Control", "no-store");
     next();
   });
 
+  function firstPartyClient(req) {
+    const origin = req.get("origin");
+    const requestOrigin = `${req.protocol}://${req.get("host")}`;
+    const referer = req.get("referer") || "";
+    const fetchSite = req.get("sec-fetch-site");
+    return origin === requestOrigin
+      || origin === "https://appassets.androidplatform.net"
+      || fetchSite === "same-origin"
+      || (!origin && referer.startsWith(`${requestOrigin}/`));
+  }
+
   function clientAuthorized(req) {
-    return !clientToken || tokenMatches(req.get("x-frontier-key"), clientToken);
+    return !clientToken || firstPartyClient(req) || tokenMatches(req.get("x-frontier-key"), clientToken);
   }
 
   function requireClientToken(req, res, next) {
@@ -152,7 +166,7 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
     return next();
   }
 
-  async function createResponse({ question, mode = "story", imageDataUrl, live = false, purpose = "ask" }) {
+  async function createResponse({ question, mode = "story", imageDataUrl, history = [], live = false, purpose = "ask" }) {
     if (!apiKey) {
       const error = new Error("OPENAI_API_KEY is not configured on the server.");
       error.status = 503;
@@ -164,11 +178,15 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
       : mode === "either"
         ? "Story Mode or Online"
         : "Story Mode";
+    const recentContext = history
+      .slice(-8)
+      .map(item => `${item.role === "assistant" ? "Frontier" : "Player"}: ${item.content}`)
+      .join("\n");
     const content = [{
       type: "input_text",
       text: purpose === "updates"
         ? "Give me a concise current update scan for Red Dead Redemption 2 and Red Dead Online as of today. Cover official Rockstar announcements, patches, event changes, and service changes first. Then cover major actively reported issues or useful workarounds. Separate confirmed information from community reports and include dates when available."
-        : `Player mode: ${modeLabel}. Player question: ${question}`
+        : `Player mode: ${modeLabel}.${recentContext ? `\nRecent call-and-response context:\n${recentContext}` : ""}\nCurrent player question: ${question}`
     }];
 
     if (imageDataUrl) {
@@ -222,6 +240,13 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
     const question = String(req.body?.question || "").trim();
     const mode = ["story", "online", "either"].includes(req.body?.mode) ? req.body.mode : "story";
     const imageDataUrl = req.body?.imageDataUrl || null;
+    const history = Array.isArray(req.body?.history)
+      ? req.body.history
+        .filter(item => item && ["user", "assistant"].includes(item.role) && typeof item.content === "string")
+        .map(item => ({ role: item.role, content: item.content.trim().slice(0, 2_000) }))
+        .filter(item => item.content)
+        .slice(-8)
+      : [];
     const live = req.body?.live === true;
 
     if (!question) return res.status(400).json({ error: "Question is required." });
@@ -229,7 +254,7 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
     if (!validImageDataUrl(imageDataUrl)) return res.status(400).json({ error: "Unsupported or oversized image." });
 
     try {
-      return res.json(await createResponse({ question, mode, imageDataUrl, live }));
+      return res.json(await createResponse({ question, mode, imageDataUrl, history, live }));
     } catch (error) {
       logger.error(error);
       return res.status(error.status || 500).json({ error: error.message || "Server error." });
