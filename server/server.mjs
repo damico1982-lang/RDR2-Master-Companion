@@ -1,11 +1,13 @@
 import { timingSafeEqual } from "node:crypto";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import cors from "cors";
 import express from "express";
 
 const DEFAULT_MODEL = "gpt-6-luna";
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
 const APP_VERSION = "1.2.1";
+const PUBLIC_DIR = fileURLToPath(new URL("./public/", import.meta.url));
+const PUBLIC_INDEX = fileURLToPath(new URL("./public/index.html", import.meta.url));
 
 const SYSTEM = `You are Frontier Guide, an unofficial expert companion for Red Dead Redemption 2 and Red Dead Online.
 Give practical, spoiler-aware help unless the player explicitly asks for spoilers.
@@ -78,18 +80,26 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
   app.disable("x-powered-by");
   app.set("trust proxy", 1);
   app.use(express.json({ limit: "12mb" }));
-  app.use(cors({
+  const crossOrigin = cors({
     origin(origin, callback) {
       if (!origin || !allowedOrigins.length || allowedOrigins.includes(origin)) return callback(null, true);
       const error = new Error("Origin not allowed.");
       error.status = 403;
       return callback(error);
     }
-  }));
+  });
+  app.use((req, res, next) => {
+    const origin = req.get("origin");
+    const requestOrigin = `${req.protocol}://${req.get("host")}`;
+    if (origin && origin === requestOrigin) return next();
+    return crossOrigin(req, res, next);
+  });
   app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Referrer-Policy", "no-referrer");
-    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Content-Security-Policy", "default-src 'self'; img-src 'self' data: https:; media-src 'self' blob:; connect-src 'self' https:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+    res.setHeader("Permissions-Policy", "camera=(self), microphone=(), geolocation=()");
+    if (req.path.startsWith("/api")) res.setHeader("Cache-Control", "no-store");
     next();
   });
 
@@ -235,7 +245,7 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
     }
   });
 
-  app.get("/", (req, res) => {
+  app.get("/api", (req, res) => {
     res.json({
       name: "Frontier Guide API",
       ok: true,
@@ -243,6 +253,9 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
       endpoints: ["/api/health", "/api/ask", "/api/live-update"]
     });
   });
+
+  app.use(express.static(PUBLIC_DIR, { index: false, maxAge: "1h" }));
+  app.get("/", (req, res) => res.sendFile(PUBLIC_INDEX));
 
   app.use((req, res) => {
     res.status(404).json({ error: "Endpoint not found." });

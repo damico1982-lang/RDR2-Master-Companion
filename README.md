@@ -2,6 +2,8 @@
 
 Frontier Guide is an unofficial, phone-first companion for Red Dead Redemption 2 and Red Dead Online. Android v1.2.1 combines an offline master guide with optional live AI, camera questions, Android screen capture, and current web-update scans.
 
+The same themed interface is also served as an installable web app from the live Render URL. Open `https://frontier-guide-api.onrender.com`, paste the Render-generated access key once in Settings, and use the guide directly in a mobile or desktop browser. Browser camera mode works over HTTPS; Android screen capture remains exclusive to the APK.
+
 The interface uses an original black, blood-red, parchment, and weathered-leather frontier theme. No Rockstar artwork or game assets are bundled.
 
 ## What is included
