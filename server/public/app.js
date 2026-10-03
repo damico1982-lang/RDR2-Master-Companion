@@ -104,7 +104,9 @@ $$(".mode").forEach(button => {
     button.classList.add("active");
     state.mode = button.dataset.mode;
     if (state.mode === "online") $("#liveSearch").checked = true;
+    renderTags();
     renderGuide();
+    renderMapTags();
     renderMap();
   });
 });
@@ -131,6 +133,20 @@ function appendSources(container, sources = []) {
   if (list.childElementCount) container.appendChild(list);
 }
 
+function fillAnswer(element, text) {
+  element.replaceChildren();
+  const parts = String(text || "").split(/(\*\*[^*]+\*\*)/g);
+  for (const part of parts) {
+    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+      const strong = document.createElement("strong");
+      strong.textContent = part.slice(2, -2);
+      element.appendChild(strong);
+    } else {
+      element.appendChild(document.createTextNode(part));
+    }
+  }
+}
+
 function msg(role, text, sources = []) {
   const message = document.createElement("div");
   message.className = `message ${role}`;
@@ -147,7 +163,7 @@ function msg(role, text, sources = []) {
   const speaker = document.createElement("b");
   speaker.textContent = role === "user" ? "You" : "Frontier Guide";
   const paragraph = document.createElement("p");
-  paragraph.textContent = text;
+  fillAnswer(paragraph, text);
   body.append(speaker, paragraph);
   appendSources(body, sources);
   message.appendChild(body);
@@ -236,6 +252,7 @@ async function askQuestion(question, { fromVoice = false } = {}) {
       sources = output.sources || [];
     }
   } catch (error) {
+    if (error.status === 429) setConnectionState("warning", "AI busy");
     const detail = error.status === 401
       ? "The server access key is missing or incorrect. Open Settings and paste the FRONTIER_CLIENT_TOKEN value."
       : error.message;
@@ -391,8 +408,14 @@ async function loadGuide() {
   renderGuide();
 }
 
+function modeMatches(item) {
+  return state.mode === "either" || item.mode === "either" || item.mode === state.mode;
+}
+
 function renderTags() {
-  const categories = ["All", ...new Set(state.guide.map(item => item.category))];
+  const visible = state.guide.filter(modeMatches);
+  const categories = ["All", ...new Set(visible.map(item => item.category))];
+  if (!categories.includes(state.category)) state.category = "All";
   $("#guideTags").innerHTML = "";
   for (const category of categories) {
     const button = document.createElement("button");
@@ -410,10 +433,9 @@ function renderTags() {
 function renderGuide() {
   const query = ($("#guideSearch")?.value || "").toLowerCase();
   const items = state.guide.filter(item => {
-    const modeMatches = state.mode === "either" || item.mode === "either" || item.mode === state.mode;
     const categoryMatches = state.category === "All" || item.category === state.category;
     const textMatches = !query || `${item.title} ${item.body} ${item.category}`.toLowerCase().includes(query);
-    return modeMatches && categoryMatches && textMatches;
+    return modeMatches(item) && categoryMatches && textMatches;
   });
 
   $("#guideResults").innerHTML = "";
@@ -650,7 +672,9 @@ async function loadMap() {
 }
 
 function renderMapTags() {
-  const categories = ["All", ...new Set(state.mapLocations.map(item => item.category))];
+  const visible = state.mapLocations.filter(modeMatches);
+  const categories = ["All", ...new Set(visible.map(item => item.category))];
+  if (!categories.includes(state.mapCategory)) state.mapCategory = "All";
   $("#mapTags").replaceChildren();
   for (const category of categories) {
     const button = document.createElement("button");
@@ -691,8 +715,7 @@ function showMapDetail(item) {
 function renderMap() {
   const items = state.mapLocations.filter(item => {
     const categoryMatch = state.mapCategory === "All" || item.category === state.mapCategory;
-    const modeMatch = state.mode === "either" || item.mode === "either" || item.mode === state.mode;
-    return categoryMatch && modeMatch;
+    return categoryMatch && modeMatches(item);
   });
   $("#mapMarkers").replaceChildren();
   items.forEach((item, index) => {
@@ -775,7 +798,7 @@ function setUpdateCard(title, text, extraClass = "") {
   const heading = document.createElement("h3");
   heading.textContent = title;
   const paragraph = document.createElement("p");
-  paragraph.textContent = text;
+  fillAnswer(paragraph, text);
   card.append(heading, paragraph);
   $("#updatesFeed").replaceChildren(card);
   return card;
@@ -797,6 +820,7 @@ async function liveUpdate() {
     const card = setUpdateCard("Latest field report", data.answer || "No update returned.");
     appendSources(card, data.sources || []);
   } catch (error) {
+    if (error.status === 429) setConnectionState("warning", "AI busy");
     const detail = error.status === 401
       ? "The server access key is missing or incorrect. Check Settings."
       : error.message;
@@ -823,7 +847,7 @@ async function contentUpdate() {
 
 $("#checkUpdates").onclick = contentUpdate;
 
-if ("serviceWorker" in navigator) {
+if ("serviceWorker" in navigator && window.location.hostname !== "appassets.androidplatform.net") {
   navigator.serviceWorker.register("sw.js").catch(() => {});
 }
 

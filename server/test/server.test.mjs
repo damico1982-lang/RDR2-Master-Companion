@@ -63,7 +63,7 @@ test("GET /api/health stays public for Render and reports readiness", async () =
       model: "gpt-6-luna",
       authRequired: true,
       authorized: false,
-      version: "1.3.0"
+      version: "1.3.1"
     });
 
     const authenticated = await fetch(`${baseUrl}/api/health`, {
@@ -85,6 +85,7 @@ test("GET / serves the installable Frontier Guide web app", async () => {
 
     const script = await fetch(`${baseUrl}/app.js`);
     assert.equal(script.status, 200);
+    assert.match(script.headers.get("cache-control") || "", /no-cache/);
     assert.match(await script.text(), /hostedApiBase/);
 
     const api = await fetch(`${baseUrl}/api`);
@@ -191,6 +192,53 @@ test("POST /api/ask sends vision-ready Responses API input", async () => {
     assert.equal(calls[0].body.input[0].content[1].type, "input_image");
     assert.match(calls[0].body.input[0].content[0].text, /Recent call-and-response context/);
     assert.match(calls[0].body.input[0].content[0].text, /near Valentine/);
+  });
+});
+
+test("upstream AI failures stay useful and do not leak provider secrets", async () => {
+  const limited = createApp({
+    env: { OPENAI_API_KEY: "test-key", FRONTIER_CLIENT_TOKEN: "frontier-secret" },
+    fetchImpl: async () => new Response(JSON.stringify({
+      error: { message: "Rate limit reached for gpt-6-luna in organization org-secret on tokens per min." }
+    }), { status: 429, headers: { "content-type": "application/json" } }),
+    logger: silentLogger
+  });
+
+  await withServer(limited, async baseUrl => {
+    const response = await fetch(`${baseUrl}/api/ask`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-frontier-key": "frontier-secret"
+      },
+      body: JSON.stringify({ question: "Where is camp?" })
+    });
+    assert.equal(response.status, 429);
+    const body = await response.json();
+    assert.match(body.error, /out of capacity/i);
+    assert.equal(JSON.stringify(body).includes("org-secret"), false);
+  });
+
+  const rejected = createApp({
+    env: { OPENAI_API_KEY: "test-key" },
+    fetchImpl: async () => new Response(JSON.stringify({
+      error: { message: "Incorrect API key provided: sk-live-secret. You can find your API key at https://platform.openai.com/account/api-keys." }
+    }), { status: 401, headers: { "content-type": "application/json" } }),
+    logger: silentLogger
+  });
+
+  await withServer(rejected, async baseUrl => {
+    const response = await fetch(`${baseUrl}/api/ask`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ question: "Where is camp?" })
+    });
+    assert.equal(response.status, 502);
+    const body = await response.json();
+    assert.match(body.error, /OPENAI_API_KEY/);
+    const encoded = JSON.stringify(body);
+    assert.equal(encoded.includes("sk-live-secret"), false);
+    assert.equal(encoded.includes("platform.openai.com"), false);
   });
 });
 
