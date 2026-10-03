@@ -11,6 +11,7 @@ import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Base64
+import android.view.ViewGroup
 import android.webkit.*
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -175,9 +176,15 @@ class MainActivity: AppCompatActivity() {
     }
 
     override fun onDestroy(){
+        if (isFinishing) stopService(Intent(this, ScreenCaptureService::class.java))
         speech?.stop()
         speech?.shutdown()
         speech=null
+        if (::web.isInitialized) {
+            web.stopLoading()
+            (web.parent as? ViewGroup)?.removeView(web)
+            web.destroy()
+        }
         super.onDestroy()
     }
 }

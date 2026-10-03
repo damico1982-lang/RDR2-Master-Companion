@@ -5,7 +5,7 @@ import express from "express";
 
 const DEFAULT_MODEL = "gpt-6-luna";
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
-const APP_VERSION = "1.3.0";
+const APP_VERSION = "1.3.1";
 const PUBLIC_DIR = fileURLToPath(new URL("./public/", import.meta.url));
 const PUBLIC_INDEX = fileURLToPath(new URL("./public/index.html", import.meta.url));
 
@@ -47,6 +47,16 @@ function extractText(response) {
     }
   }
   return parts.join("\n").trim() || "No answer returned.";
+}
+
+function clientSafeAiError(status) {
+  if (status === 429) {
+    return "The AI service is temporarily out of capacity. Wait a bit and try again. Offline guide answers still work.";
+  }
+  if (status === 401 || status === 403) {
+    return "The AI service rejected the server credentials. Check OPENAI_API_KEY on the host.";
+  }
+  return "The AI service could not answer that request. Try again shortly.";
 }
 
 function extractSources(response) {
@@ -224,7 +234,12 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const error = new Error(data?.error?.message || `AI request failed with status ${response.status}.`);
+      const providerMessage = typeof data?.error?.message === "string" ? data.error.message : "";
+      const safeLog = /api key|sk-|bearer /i.test(providerMessage)
+        ? "provider rejected the credentials"
+        : providerMessage.slice(0, 300);
+      logger.error(`OpenAI request failed with status ${response.status}: ${safeLog}`);
+      const error = new Error(clientSafeAiError(response.status));
       error.status = response.status === 429 ? 429 : 502;
       throw error;
     }
@@ -279,7 +294,14 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
     });
   });
 
-  app.use(express.static(PUBLIC_DIR, { index: false, maxAge: "1h" }));
+  app.use(express.static(PUBLIC_DIR, {
+    index: false,
+    etag: true,
+    setHeaders(res, filePath) {
+      const longLived = filePath.endsWith(".svg") || filePath.endsWith(".png");
+      res.setHeader("Cache-Control", longLived ? "public, max-age=86400" : "no-cache");
+    }
+  }));
   app.get("/", (req, res) => res.sendFile(PUBLIC_INDEX));
 
   app.use((req, res) => {
