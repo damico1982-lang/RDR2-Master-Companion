@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.content.*
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Bundle
@@ -12,6 +13,7 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import android.util.Base64
+import android.util.Log
 import android.view.ViewGroup
 import android.webkit.*
 import android.widget.Toast
@@ -25,6 +27,7 @@ import org.json.JSONObject
 
 class MainActivity: AppCompatActivity() {
     private lateinit var web: WebView
+    private lateinit var loader: WebViewAssetLoader
     private lateinit var projectionManager: MediaProjectionManager
     private val captureCode=9001
     private val voiceCode=9002
@@ -32,80 +35,137 @@ class MainActivity: AppCompatActivity() {
     private var fileChooserCallback:ValueCallback<Array<Uri>>?=null
     private var speech: TextToSpeech?=null
     private var speechReady=false
+    private var rendererReloads=0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
         projectionManager=getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         requestNeededPermissions()
-        web=WebView(this)
-        setContentView(web)
+        loader=WebViewAssetLoader.Builder()
+            .setDomain("appassets.androidplatform.net")
+            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+            .build()
+        createWebView()
         speech=TextToSpeech(this){status->
             speechReady=status==TextToSpeech.SUCCESS
             if(speechReady){
-                speech?.language=Locale.US
-                speech?.let { engine -> chooseDeepMaleVoice(engine)?.let { engine.voice = it } }
-                speech?.setPitch(0.78f)
-                speech?.setOnUtteranceProgressListener(object:UtteranceProgressListener(){
-                    override fun onStart(utteranceId:String?){}
-                    override fun onError(utteranceId:String?){ notifySpeechFinished() }
-                    override fun onDone(utteranceId:String?){ notifySpeechFinished() }
-                })
-            }
-        }
-        val loader=WebViewAssetLoader.Builder().addPathHandler("/assets/",WebViewAssetLoader.AssetsPathHandler(this)).build()
-        web.settings.javaScriptEnabled=true
-        web.settings.domStorageEnabled=true
-        web.settings.mediaPlaybackRequiresUserGesture=false
-        web.settings.allowFileAccess=false
-        web.settings.allowContentAccess=true
-        web.settings.javaScriptCanOpenWindowsAutomatically=false
-        web.settings.mixedContentMode=WebSettings.MIXED_CONTENT_NEVER_ALLOW
-        web.settings.safeBrowsingEnabled=true
-        web.webViewClient=object:WebViewClient(){
-            override fun shouldInterceptRequest(view:WebView?,request:WebResourceRequest?)=request?.url?.let{loader.shouldInterceptRequest(it)}
-            override fun shouldOverrideUrlLoading(view:WebView?,request:WebResourceRequest?):Boolean {
-                val uri=request?.url ?: return false
-                if(uri.scheme=="https" && uri.host=="appassets.androidplatform.net")return false
-                return try {
-                    startActivity(Intent(Intent.ACTION_VIEW,uri))
-                    true
-                } catch(_:ActivityNotFoundException) {
-                    Toast.makeText(this@MainActivity,"No app can open this link",Toast.LENGTH_SHORT).show()
-                    true
+                try {
+                    speech?.language=Locale.US
+                    speech?.let { engine -> chooseDeepMaleVoice(engine)?.let { engine.voice = it } }
+                    speech?.setPitch(0.78f)
+                    speech?.setOnUtteranceProgressListener(object:UtteranceProgressListener(){
+                        override fun onStart(utteranceId:String?){}
+                        override fun onError(utteranceId:String?){ notifySpeechFinished() }
+                        override fun onDone(utteranceId:String?){ notifySpeechFinished() }
+                    })
+                } catch (error: RuntimeException) {
+                    Log.e(TAG, "Voice setup failed", error)
+                    speechReady=false
                 }
             }
         }
-        web.webChromeClient=object:WebChromeClient(){
-            override fun onPermissionRequest(request:PermissionRequest?){
-                runOnUiThread{
-                    val origin=request?.origin
-                    val trusted=origin?.scheme=="https" && origin?.host=="appassets.androidplatform.net"
-                    val allowed=request?.resources?.filter{
-                        it==PermissionRequest.RESOURCE_VIDEO_CAPTURE || it==PermissionRequest.RESOURCE_AUDIO_CAPTURE
-                    }?.toTypedArray() ?: emptyArray<String>()
-                    if(trusted && allowed.isNotEmpty())request?.grant(allowed) else request?.deny()
-                }
+        web.loadUrl(START_URL)
+    }
+
+    private fun createWebView() {
+        val previous = if (::web.isInitialized) web else null
+        val next = WebView(this)
+        next.setBackgroundColor(Color.parseColor("#130B0B"))
+        next.settings.javaScriptEnabled=true
+        next.settings.domStorageEnabled=true
+        next.settings.mediaPlaybackRequiresUserGesture=false
+        next.settings.allowFileAccess=false
+        next.settings.allowContentAccess=true
+        next.settings.javaScriptCanOpenWindowsAutomatically=false
+        next.settings.mixedContentMode=WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        // Safe Browsing looks up appassets.androidplatform.net, which is not a public site.
+        // That lookup blocks or crashes the local asset page on some WebView builds.
+        next.settings.safeBrowsingEnabled=false
+        next.webViewClient=AssetClient()
+        next.webChromeClient=GuideChrome()
+        next.addJavascriptInterface(Bridge(),"AndroidBridge")
+        web=next
+        setContentView(web)
+        if (previous != null && previous !== next) {
+            (previous.parent as? ViewGroup)?.removeView(previous)
+            previous.destroy()
+        }
+    }
+
+    private inner class AssetClient: WebViewClient() {
+        override fun shouldInterceptRequest(view:WebView?, request:WebResourceRequest?): WebResourceResponse? {
+            val uri=request?.url ?: return null
+            if (uri.scheme=="https" && uri.host=="appassets.androidplatform.net") {
+                return loader.shouldInterceptRequest(uri)
             }
-            override fun onShowFileChooser(webView:WebView?,callback:ValueCallback<Array<Uri>>?,params:FileChooserParams?):Boolean{
+            return null
+        }
+        override fun shouldOverrideUrlLoading(view:WebView?, request:WebResourceRequest?):Boolean {
+            val uri=request?.url ?: return false
+            if(uri.scheme=="https" && uri.host=="appassets.androidplatform.net")return false
+            return try {
+                startActivity(Intent(Intent.ACTION_VIEW,uri))
+                true
+            } catch(_:ActivityNotFoundException) {
+                Toast.makeText(this@MainActivity,"No app can open this link",Toast.LENGTH_SHORT).show()
+                true
+            }
+        }
+        override fun onPageFinished(view: WebView?, url: String?) {
+            Log.i(TAG, "page finished $url")
+        }
+        override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
+            if (request?.isForMainFrame == true) {
+                Log.e(TAG, "main frame error ${error?.errorCode} ${error?.description} ${request.url}")
+            }
+        }
+        override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+            Log.e(TAG, "renderer gone didCrash=${detail?.didCrash()}")
+            if (rendererReloads >= 2) {
+                Toast.makeText(this@MainActivity, "Frontier Guide's viewer crashed. Close the app and open it again.", Toast.LENGTH_LONG).show()
+                return true
+            }
+            rendererReloads += 1
+            createWebView()
+            web.loadUrl(START_URL)
+            return true
+        }
+    }
+
+    private inner class GuideChrome: WebChromeClient() {
+        override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+            val line = "console ${consoleMessage?.messageLevel()} ${consoleMessage?.sourceId()}:${consoleMessage?.lineNumber()} ${consoleMessage?.message()}"
+            if (consoleMessage?.messageLevel() == ConsoleMessage.MessageLevel.ERROR) Log.e(TAG, line) else Log.i(TAG, line)
+            return true
+        }
+        override fun onPermissionRequest(request:PermissionRequest?){
+            runOnUiThread{
+                val origin=request?.origin
+                val trusted=origin?.scheme=="https" && origin?.host=="appassets.androidplatform.net"
+                val allowed=request?.resources?.filter{
+                    it==PermissionRequest.RESOURCE_VIDEO_CAPTURE || it==PermissionRequest.RESOURCE_AUDIO_CAPTURE
+                }?.toTypedArray() ?: emptyArray<String>()
+                if(trusted && allowed.isNotEmpty())request?.grant(allowed) else request?.deny()
+            }
+        }
+        override fun onShowFileChooser(webView:WebView?, callback:ValueCallback<Array<Uri>>?, params:FileChooserParams?):Boolean{
+            fileChooserCallback?.onReceiveValue(null)
+            fileChooserCallback=callback
+            return try{
+                val intent=params?.createIntent() ?: Intent(Intent.ACTION_GET_CONTENT).apply{
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type="image/*"
+                }
+                startActivityForResult(intent,fileChooserCode)
+                true
+            }catch(_:ActivityNotFoundException){
                 fileChooserCallback?.onReceiveValue(null)
-                fileChooserCallback=callback
-                return try{
-                    val intent=params?.createIntent() ?: Intent(Intent.ACTION_GET_CONTENT).apply{
-                        addCategory(Intent.CATEGORY_OPENABLE)
-                        type="image/*"
-                    }
-                    startActivityForResult(intent,fileChooserCode)
-                    true
-                }catch(_:ActivityNotFoundException){
-                    fileChooserCallback?.onReceiveValue(null)
-                    fileChooserCallback=null
-                    Toast.makeText(this@MainActivity,"No photo picker is available",Toast.LENGTH_SHORT).show()
-                    false
-                }
+                fileChooserCallback=null
+                Toast.makeText(this@MainActivity,"No photo picker is available",Toast.LENGTH_SHORT).show()
+                false
             }
         }
-        web.addJavascriptInterface(Bridge(),"AndroidBridge")
-        web.loadUrl("https://appassets.androidplatform.net/assets/web/index.html")
     }
 
     inner class Bridge {
@@ -146,15 +206,21 @@ class MainActivity: AppCompatActivity() {
     }
 
     private fun chooseDeepMaleVoice(engine: TextToSpeech): Voice? {
-        val voices = engine.voices ?: return null
-        fun described(voice: Voice) = (voice.name + " " + voice.features.joinToString(" ")).lowercase()
+        val voices = try { engine.voices } catch (_: RuntimeException) { null } ?: return null
+        fun described(voice: Voice): String {
+            val features = try { voice.features?.joinToString(" ").orEmpty() } catch (_: RuntimeException) { "" }
+            return (voice.name + " " + features).lowercase()
+        }
         fun englishMale(voice: Voice): Boolean {
-            if (!voice.locale.language.equals("en", ignoreCase = true)) return false
+            val language = voice.locale?.language ?: return false
+            if (!language.equals("en", ignoreCase = true)) return false
             val blob = described(voice)
             return blob.contains("male") && !blob.contains("female")
         }
         val males = voices.filter { englishMale(it) }
-        val pool = if (males.isNotEmpty()) males else voices.filter { it.locale.language.equals("en", ignoreCase = true) }
+        val pool = if (males.isNotEmpty()) males else voices.filter {
+            it.locale?.language.equals("en", ignoreCase = true)
+        }
         return pool.maxWithOrNull(
             compareBy<Voice> { it.quality }
                 .thenBy { if (it.isNetworkConnectionRequired) 0 else 1 }
@@ -163,7 +229,9 @@ class MainActivity: AppCompatActivity() {
     }
 
     private fun notifySpeechFinished(){
-        runOnUiThread{ web.evaluateJavascript("window.FrontierGuideNative?.onSpeechFinished()",null) }
+        runOnUiThread{
+            if (::web.isInitialized) web.evaluateJavascript("window.FrontierGuideNative?.onSpeechFinished()",null)
+        }
     }
 
     override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?){
@@ -206,5 +274,10 @@ class MainActivity: AppCompatActivity() {
             web.destroy()
         }
         super.onDestroy()
+    }
+
+    companion object {
+        private const val TAG = "FrontierGuide"
+        private const val START_URL = "https://appassets.androidplatform.net/assets/web/index.html"
     }
 }
