@@ -78,6 +78,14 @@ jobs:
       with:
         name: Frontier-Guide-debug-apk
         path: apk
+    - name: Allow the emulator to use hardware acceleration
+      run: |
+        if [ ! -e /dev/kvm ]; then
+          echo "::error::This runner has no /dev/kvm, so WebView cannot run in the emulator."
+          exit 1
+        fi
+        sudo chmod 666 /dev/kvm
+        ls -l /dev/kvm
     - name: Install the APK and check the main screens
       uses: reactivecircus/android-emulator-runner@v2
       with:
@@ -85,6 +93,7 @@ jobs:
         target: google_apis
         arch: x86_64
         emulator-boot-timeout: 1200
+        disable-linux-hw-accel: false
         disable-animations: true
         emulator-options: -no-window -no-snapshot -no-audio -no-boot-anim -gpu swiftshader_indirect
         script: node android-native/scripts/emulator-smoke.mjs apk/app-debug.apk
