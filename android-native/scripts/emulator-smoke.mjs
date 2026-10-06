@@ -35,6 +35,8 @@ function connectDevtools(wsUrl) {
     let raw = Buffer.alloc(0);
     let opened = false;
     const queued = [];
+    const early = [];
+    let handler = null;
     const api = {
       send(text) {
         const frame = encodeFrame(1, text);
@@ -44,7 +46,15 @@ function connectDevtools(wsUrl) {
       close() {
         socket.end();
       },
-      onmessage: null
+      onclose: null,
+      set onmessage(value) {
+        handler = value;
+        if (!value) return;
+        for (const text of early.splice(0)) value(text);
+      },
+      get onmessage() {
+        return handler;
+      }
     };
     const fail = error => {
       socket.destroy();
@@ -52,6 +62,7 @@ function connectDevtools(wsUrl) {
     };
     socket.setTimeout(20000, () => fail(new Error("DevTools socket timed out")));
     socket.on("error", fail);
+    socket.on("close", () => api.onclose?.());
     socket.on("connect", () => {
       socket.write(
         `GET ${url.pathname}${url.search} HTTP/1.1\r\n` +
@@ -89,8 +100,11 @@ function connectDevtools(wsUrl) {
           payload = Buffer.from(payload);
         }
         raw = raw.subarray(offset + maskLength + length);
-        if (opcode === 1) api.onmessage?.(payload.toString("utf8"));
-        else if (opcode === 8) socket.end();
+        if (opcode === 1 || opcode === 2) {
+          const text = payload.toString("utf8");
+          if (handler) handler(text);
+          else early.push(text);
+        } else if (opcode === 8) socket.end();
         else if (opcode === 9) socket.write(encodeFrame(10, payload));
       }
     };
@@ -178,7 +192,7 @@ function adbOk(...args) {
 }
 
 function dumpLogs() {
-  console.error(adbOk("logcat", "-d", "-t", "300", "-s", "FrontierGuide:V", "chromium:E", "AndroidRuntime:E").out.slice(-6000));
+  console.error(adbOk("logcat", "-d", "-t", "180").out.slice(-7000));
 }
 
 process.on("unhandledRejection", error => {
@@ -199,23 +213,33 @@ for (const permission of [
 adb("logcat", "-c");
 adb("shell", "am", "start", "-n", "com.frontierguide.app/.MainActivity");
 
-let socket = "";
-for (let attempt = 0; attempt < 40; attempt += 1) {
-  const listed = adbOk("shell", "cat", "/proc/net/unix").out;
-  const match = listed.match(/webview_devtools_remote_\d+/);
-  if (match) {
-    socket = match[0];
-    break;
+let appPid = "";
+let socketName = "";
+for (let attempt = 0; attempt < 45; attempt += 1) {
+  appPid = adbOk("shell", "pidof", "com.frontierguide.app").out.trim().split(/\s+/).filter(Boolean)[0] || "";
+  if (appPid) {
+    const listed = adbOk("shell", "cat", "/proc/net/unix").out;
+    const name = `webview_devtools_remote_${appPid}`;
+    if (listed.includes(name)) {
+      socketName = name;
+      if (adbOk("logcat", "-d", "-t", "500").out.includes("page finished")) break;
+    }
   }
   await delay(2000);
 }
-if (!socket) {
-  console.error(adbOk("logcat", "-d", "-t", "200").out);
-  throw new Error("WebView DevTools socket never appeared");
+if (!socketName) {
+  dumpLogs();
+  throw new Error(`WebView DevTools socket for Frontier Guide pid ${appPid || "missing"} never appeared`);
 }
+const bootLog = adbOk("logcat", "-d", "-t", "500").out;
+if (!bootLog.includes("page finished")) {
+  console.error(bootLog.slice(-7000));
+  throw new Error("Frontier Guide did not finish loading its page");
+}
+console.log(`devtools socket ${socketName} pid ${appPid}`);
 
 adb("forward", "--remove-all");
-adb("forward", "tcp:9222", `localabstract:${socket}`);
+adb("forward", "tcp:9222", `localabstract:${socketName}`);
 
 function devtoolsJson() {
   return new Promise((resolve, reject) => {
@@ -278,55 +302,45 @@ function send(method, params = {}, timeoutMs = 30000) {
   });
 }
 
-function attachSocket(socket) {
-  ws = socket;
-  ws.binaryType = "arraybuffer";
-  ws.addEventListener("message", event => {
-    if (ws !== socket) return;
-    const text = typeof event.data === "string" ? event.data : Buffer.from(event.data).toString("utf8");
-    const message = JSON.parse(text);
-    if (message.id && pending.has(message.id)) {
-      const waiter = pending.get(message.id);
-      pending.delete(message.id);
-      clearTimeout(waiter.timer);
-      if (message.error) waiter.reject(new Error(JSON.stringify(message.error)));
-      else waiter.resolve(message.result);
-      return;
-    }
-    if (message.method === "Runtime.consoleAPICalled" && message.params?.type === "error") {
-      consoleErrors.push(JSON.stringify(message.params.args || message.params));
-    }
-    if (message.method === "Runtime.exceptionThrown") {
-      consoleErrors.push(message.params?.exceptionDetails?.text || JSON.stringify(message.params));
-    }
-  });
-  ws.addEventListener("close", () => {
-    if (ws !== socket) return;
-    for (const waiter of pending.values()) {
-      clearTimeout(waiter.timer);
-      waiter.reject(new Error("DevTools websocket closed"));
-    }
-    pending.clear();
-  });
+function handleDevtoolsMessage(text) {
+  let message;
+  try {
+    message = JSON.parse(text);
+  } catch {
+    consoleErrors.push(text.slice(0, 240));
+    return;
+  }
+  if (message.id && pending.has(message.id)) {
+    const waiter = pending.get(message.id);
+    pending.delete(message.id);
+    clearTimeout(waiter.timer);
+    if (message.error) waiter.reject(new Error(JSON.stringify(message.error)));
+    else waiter.resolve(message.result);
+    return;
+  }
+  if (message.method === "Runtime.consoleAPICalled" && message.params?.type === "error") {
+    consoleErrors.push(JSON.stringify(message.params.args || message.params));
+  }
+  if (message.method === "Runtime.exceptionThrown") {
+    consoleErrors.push(message.params?.exceptionDetails?.text || JSON.stringify(message.params));
+  }
 }
 
 async function openPage() {
   const target = new URL(page.webSocketDebuggerUrl);
   target.hostname = "127.0.0.1";
   target.port = "9222";
-  const socket = new WebSocket(target);
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("DevTools websocket did not open")), 20000);
-    socket.addEventListener("open", () => {
-      clearTimeout(timer);
-      resolve();
-    });
-    socket.addEventListener("error", () => {
-      clearTimeout(timer);
-      reject(new Error("DevTools websocket failed"));
-    });
-  });
-  attachSocket(socket);
+  const socket = await connectDevtools(target.toString());
+  ws = socket;
+  socket.onmessage = handleDevtoolsMessage;
+  socket.onclose = () => {
+    if (ws !== socket) return;
+    for (const waiter of pending.values()) {
+      clearTimeout(waiter.timer);
+      waiter.reject(new Error("DevTools websocket closed"));
+    }
+    pending.clear();
+  };
 }
 
 await openPage();
