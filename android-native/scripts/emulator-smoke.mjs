@@ -431,7 +431,7 @@ async function show(view) {
   await delay(700);
   shot(view);
 }
-for (const view of ["ask", "voice", "guide", "legendary", "animals", "secrets", "hidden", "map", "updates", "settings"]) {
+for (const view of ["ask", "voice", "guide", "legendary", "animals", "secrets", "hidden", "map", "updates", "settings", "coach"]) {
   await show(view);
 }
 

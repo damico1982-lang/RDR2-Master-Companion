@@ -508,12 +508,15 @@ a:focus-visible {
 .region-heartlands { left: 45%; top: 27%; width: 35%; height: 45%; }
 .region-north { left: 23%; top: 4%; width: 45%; height: 34%; }
 .region-south { right: 3%; bottom: 4%; width: 27%; height: 38%; }
+.map-stage { position: absolute; inset: 0; transform-origin: 0 0; }
+.map-tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.field-map { touch-action: none; }
 .map-marker {
   position: absolute;
   z-index: 3;
   display: grid;
-  width: 31px;
-  height: 31px;
+  width: 40px;
+  height: 40px;
   place-items: center;
   border: 2px solid #f0d19d;
   border-radius: 50% 50% 50% 0;
@@ -663,3 +666,9 @@ video,
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; transition: none !important; animation-duration: .001ms !important; animation-iteration-count: 1 !important; }
 }
+
+button:disabled { opacity: .45; }
+.screen-status, #coachMeta, #contentVersion { margin: 8px 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.coach-setup { display: grid; gap: 10px; margin: 12px 0; }
+.coach-preview { width: 100%; max-height: 240px; object-fit: contain; border-radius: 8px; background: #100c0a; margin: 8px 0; }
+#coachState { color: #e3c795; font-size: 13px; letter-spacing: .04em; }

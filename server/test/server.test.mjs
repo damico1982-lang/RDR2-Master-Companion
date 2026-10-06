@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { createApp } from "../server.mjs";
+import { createApp, parseCoachAnswer } from "../server.mjs";
 
 const silentLogger = { log() {}, error() {} };
 
@@ -64,7 +64,7 @@ test("GET /api/health stays public for Render and reports readiness", async () =
       model: "gpt-6-luna",
       authRequired: true,
       authorized: false,
-      version: "1.4.2",
+      version: "1.5.0",
       tts: {
         enabled: true,
         model: "gpt-4o-mini-tts",
@@ -96,7 +96,7 @@ test("GET / serves the installable Frontier Guide web app", async () => {
 
     const api = await fetch(`${baseUrl}/api`);
     assert.equal(api.status, 200);
-    assert.deepEqual((await api.json()).endpoints, ["/api/health", "/api/ask", "/api/speak", "/api/live-update"]);
+    assert.deepEqual((await api.json()).endpoints, ["/api/health", "/api/ask", "/api/speak", "/api/coach", "/api/live-update"]);
   });
 });
 
@@ -440,6 +440,7 @@ test("bundled Story Mode pages are served with the confirmed counts", async () =
 test("android assets match the web guide shell", () => {
   const files = [
     "app.js",
+    "frontier-session.js",
     "index.html",
     "styles.css",
     "sw.js",
@@ -455,4 +456,62 @@ test("android assets match the web guide shell", () => {
     const android = readFileSync(new URL(`../../android-native/app/src/main/assets/web/${file}`, import.meta.url), "utf8");
     assert.equal(web, android, file);
   }
+});
+
+test("coach JSON keeps only confirmed structured advice", () => {
+  const parsed = parseCoachAnswer(`{"observation":"A mission banner is visible.","uncertainty":"The reward is not readable.","nextAction":"Open the banner.","readable":true,"tips":[{"id":"banner","text":"Read the banner before you ride.","priority":1,"guideId":""}]}`);
+  assert.equal(parsed.nextAction, "Open the banner.");
+  assert.equal(parsed.readable, true);
+  assert.equal(parsed.tips.length, 1);
+  assert.equal(parseCoachAnswer("not json"), null);
+});
+
+test("POST /api/coach requires a frame and returns structured advice", async () => {
+  const calls = [];
+  const app = createApp({
+    env: { OPENAI_API_KEY: "test-key", FRONTIER_CLIENT_TOKEN: "frontier-secret" },
+    logger: silentLogger,
+    fetchImpl: async (url, options) => {
+      calls.push(JSON.parse(options.body));
+      return new Response(JSON.stringify({
+        output: [{ type: "message", content: [{ type: "output_text", text: "{\"observation\":\"Snow trail.\",\"uncertainty\":\"The animal is not identifiable.\",\"nextAction\":\"Dismount and look again.\",\"readable\":true,\"tips\":[]}" }] }]
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+  });
+  await withServer(app, async baseUrl => {
+    const missing = await fetch(`${baseUrl}/api/coach`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: "https://appassets.androidplatform.net" },
+      body: JSON.stringify({ sessionId: "1", frameId: "1" })
+    });
+    assert.equal(missing.status, 400);
+
+    const denied = await fetch(`${baseUrl}/api/coach`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ imageDataUrl: "data:image/jpeg;base64,aGVsbG8=" })
+    });
+    assert.equal(denied.status, 401);
+
+    const coach = await fetch(`${baseUrl}/api/coach`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: "https://appassets.androidplatform.net" },
+      body: JSON.stringify({
+        sessionId: "7",
+        frameId: "3",
+        imageDataUrl: "data:image/jpeg;base64,aGVsbG8=",
+        mode: "story",
+        platform: "console",
+        spoiler: false
+      })
+    });
+    assert.equal(coach.status, 200);
+    const body = await coach.json();
+    assert.equal(body.sessionId, "7");
+    assert.equal(body.frameId, "3");
+    assert.equal(body.nextAction, "Dismount and look again.");
+    assert.equal(body.readable, true);
+    assert.match(calls[0].input.at(-1).content[0].text, /Do not reveal future story events/);
+    assert.equal(calls[0].input.at(-1).content[1].type, "input_image");
+  });
 });

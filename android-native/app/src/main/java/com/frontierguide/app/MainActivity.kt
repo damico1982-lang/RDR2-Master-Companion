@@ -9,7 +9,9 @@ import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
+import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
@@ -39,7 +41,23 @@ class MainActivity: AppCompatActivity() {
     private var fileChooserCallback:ValueCallback<Array<Uri>>?=null
     private var speech: TextToSpeech?=null
     private var speechReady=false
+    private var speechGen=0
+    private var recognizer: SpeechRecognizer?=null
+    private var voiceGen=0
+    private var pendingVoiceGen: Int?=null
+    private var intentVoiceGen=0
+    private var pendingCaptureSession=0
     private var rendererReloads=0
+    private val coachOverlay by lazy { CoachOverlay(this) }
+    private val captureReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.getStringExtra("state")) {
+                "ready" -> tellJs("onScreenShareReady", intent.getIntExtra("session", 0).toString())
+                "denied" -> tellJs("onScreenShareDenied", intent.getStringExtra("message") ?: "Screen share was not allowed.")
+                "stopped" -> tellJs("onScreenShareStopped")
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,6 +67,7 @@ class MainActivity: AppCompatActivity() {
             .setDomain("appassets.androidplatform.net")
             .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
             .build()
+        ContextCompat.registerReceiver(this, captureReceiver, IntentFilter(ScreenCaptureService.ACTION_EVENT), ContextCompat.RECEIVER_NOT_EXPORTED)
         createWebView()
         speech=TextToSpeech(this){status->
             speechReady=status==TextToSpeech.SUCCESS
@@ -59,8 +78,8 @@ class MainActivity: AppCompatActivity() {
                     speech?.setPitch(0.78f)
                     speech?.setOnUtteranceProgressListener(object:UtteranceProgressListener(){
                         override fun onStart(utteranceId:String?){}
-                        override fun onError(utteranceId:String?){ notifySpeechFinished() }
-                        override fun onDone(utteranceId:String?){ notifySpeechFinished() }
+                        override fun onError(utteranceId:String?){ notifySpeechFinished(utteranceId) }
+                        override fun onDone(utteranceId:String?){ notifySpeechFinished(utteranceId) }
                     })
                 } catch (error: RuntimeException) {
                     Log.e(TAG, "Voice setup failed", error)
@@ -180,7 +199,9 @@ class MainActivity: AppCompatActivity() {
 
     inner class Bridge {
         @JavascriptInterface fun hasMicrophonePermission(): Boolean = hasPermission(Manifest.permission.RECORD_AUDIO)
-        @JavascriptInterface fun requestMicrophonePermission() { runOnUiThread { launchVoiceInput() } }
+        @JavascriptInterface fun requestMicrophonePermission() { runOnUiThread { launchVoiceInput(null) } }
+        @JavascriptInterface fun beginVoiceInput(generation: String) { runOnUiThread { launchVoiceInput(generation.toIntOrNull()) } }
+        @JavascriptInterface fun cancelVoiceInput() { runOnUiThread { cancelOwnedRecognizer() } }
         @JavascriptInterface fun hasCameraPermission(): Boolean = hasPermission(Manifest.permission.CAMERA)
         @JavascriptInterface fun requestCameraPermission() {
             runOnUiThread {
@@ -189,21 +210,48 @@ class MainActivity: AppCompatActivity() {
             }
         }
         @JavascriptInterface fun startScreenShare(){ runOnUiThread{ beginScreenShare() } }
-        @JavascriptInterface fun stopScreenShare(){ stopService(Intent(this@MainActivity,ScreenCaptureService::class.java)) }
-        @JavascriptInterface fun getLatestScreenDataUrl():String { val f=File(cacheDir,"latest_screen.jpg"); if(!f.exists())return ""; return "data:image/jpeg;base64,"+Base64.encodeToString(f.readBytes(),Base64.NO_WRAP) }
-        @JavascriptInterface fun startVoiceInput(){ runOnUiThread{ launchVoiceInput() } }
+        @JavascriptInterface fun stopScreenShare(){
+            runOnUiThread {
+                ScreenCaptureService.acceptSession = -1
+                pendingCaptureSession = 0
+                stopService(Intent(this@MainActivity, ScreenCaptureService::class.java))
+            }
+        }
+        @JavascriptInterface fun getLatestScreenMeta(): String {
+            if (!ScreenCaptureService.active) return """{"state":"stopped"}"""
+            val file = File(cacheDir, "latest_screen.json")
+            if (!file.exists()) return """{"state":"waiting","session":${ScreenCaptureService.currentSession}}"""
+            return try { file.readText() } catch (_: Exception) { """{"state":"waiting"}""" }
+        }
+        @JavascriptInterface fun getLatestScreenDataUrl():String {
+            if (!ScreenCaptureService.active) return ""
+            val f=File(cacheDir,"latest_screen.jpg")
+            if(!f.exists())return ""
+            return try { "data:image/jpeg;base64,"+Base64.encodeToString(f.readBytes(),Base64.NO_WRAP) } catch (_: Exception) { "" }
+        }
+        @JavascriptInterface fun startVoiceInput(){ runOnUiThread{ launchVoiceInput(null) } }
+        @JavascriptInterface fun canDrawOverlays(): Boolean = Settings.canDrawOverlays(this@MainActivity)
+        @JavascriptInterface fun requestOverlayPermission() {
+            runOnUiThread {
+                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+            }
+        }
+        @JavascriptInterface fun showCoachOverlay(text: String) { runOnUiThread { coachOverlay.show(text) } }
+        @JavascriptInterface fun hideCoachOverlay() { runOnUiThread { coachOverlay.hide() } }
         @JavascriptInterface fun speak(text:String,rate:Double,pitch:Double){
             runOnUiThread{
                 if(!speechReady){
                     web.evaluateJavascript("window.FrontierGuideNative?.onSpeechError('Android voice is still starting. Tap the mic again.')",null)
                     return@runOnUiThread
                 }
+                speechGen += 1
+                val gen = speechGen
                 speech?.setSpeechRate(rate.toFloat().coerceIn(.65f,1.35f))
                 speech?.setPitch(pitch.toFloat().coerceIn(.7f,1.25f))
-                speech?.speak(text.take(5_000),TextToSpeech.QUEUE_FLUSH,null,"frontier-response")
+                speech?.speak(text.take(5_000),TextToSpeech.QUEUE_FLUSH,null,"frontier-$gen")
             }
         }
-        @JavascriptInterface fun stopSpeaking(){ runOnUiThread{ speech?.stop() } }
+        @JavascriptInterface fun stopSpeaking(){ runOnUiThread{ speechGen += 1; speech?.stop() } }
     }
 
     private fun hasPermission(permission: String): Boolean =
@@ -224,28 +272,97 @@ class MainActivity: AppCompatActivity() {
         startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
     }
 
-    private fun launchVoiceInput(){
+    private fun cancelOwnedRecognizer() {
+        voiceGen = -1
+        pendingVoiceGen = null
+        try { recognizer?.cancel() } catch (_: RuntimeException) {}
+        try { recognizer?.destroy() } catch (_: RuntimeException) {}
+        recognizer = null
+    }
+
+    private fun voiceIntent(): Intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+        .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+        .putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.US.toLanguageTag())
+        .putExtra(RecognizerIntent.EXTRA_PROMPT, "Ask Frontier Guide")
+        .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+
+    private fun launchVoiceInput(fromJs: Int?) {
         if (!hasPermission(Manifest.permission.RECORD_AUDIO)) {
+            pendingVoiceGen = fromJs
             askFor(Manifest.permission.RECORD_AUDIO, micCode)
             return
         }
-        try{
-            val intent=Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-                .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                .putExtra(RecognizerIntent.EXTRA_LANGUAGE,Locale.US.toLanguageTag())
-                .putExtra(RecognizerIntent.EXTRA_PROMPT,"Ask Frontier Guide")
-                .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS,1)
-            startActivityForResult(intent,voiceCode)
-        }catch(_:ActivityNotFoundException){
+        val gen = fromJs ?: pendingVoiceGen
+        pendingVoiceGen = null
+        if (gen == null) return
+        voiceGen = gen
+        if (SpeechRecognizer.isRecognitionAvailable(this)) startOwnedRecognizer(gen)
+        else startIntentRecognizer(gen)
+    }
+
+    private fun startOwnedRecognizer(gen: Int) {
+        cancelOwnedRecognizer()
+        voiceGen = gen
+        val engine = SpeechRecognizer.createSpeechRecognizer(this)
+        recognizer = engine
+        engine.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onError(error: Int) {
+                if (gen != voiceGen) return
+                tellJs("onSpeechError", speechErrorText(error))
+            }
+            override fun onResults(results: Bundle?) {
+                if (gen != voiceGen) return
+                val spoken = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
+                tellSpeechResult(spoken, gen)
+            }
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+        try {
+            engine.startListening(voiceIntent())
+        } catch (_: RuntimeException) {
+            tellJs("onSpeechError", "Speech recognition could not start. Tap the microphone to retry.")
+        }
+    }
+
+    private fun startIntentRecognizer(gen: Int) {
+        intentVoiceGen = gen
+        try {
+            startActivityForResult(voiceIntent(), voiceCode)
+        } catch (_: ActivityNotFoundException) {
             tellJs("onSpeechError", "No speech recognition service is installed on this phone.")
         }
     }
 
+    private fun speechErrorText(code: Int) = when (code) {
+        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Allow microphone access, then try again."
+        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "I did not catch that. Tap the microphone and try again."
+        SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Speech recognition could not reach its service."
+        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Speech recognition is busy. Tap the microphone again."
+        else -> "Tap the microphone to retry."
+    }
+
+    private fun tellSpeechResult(text: String, gen: Int) {
+        if (!::web.isInitialized) return
+        web.evaluateJavascript("window.FrontierGuideNative?.onSpeechResult(${JSONObject.quote(text)}, $gen)", null)
+    }
+
     private fun beginScreenShare() {
+        if (ScreenCaptureService.active) {
+            tellJs("onScreenShareReady", ScreenCaptureService.currentSession.toString())
+            return
+        }
         if (android.os.Build.VERSION.SDK_INT >= 33 && !hasPermission(Manifest.permission.POST_NOTIFICATIONS)) {
             askFor(Manifest.permission.POST_NOTIFICATIONS, notificationCode)
             return
         }
+        pendingCaptureSession = ScreenCaptureService.takeSession()
+        ScreenCaptureService.acceptSession = pendingCaptureSession
         startActivityForResult(projectionManager.createScreenCaptureIntent(), captureCode)
     }
 
@@ -278,25 +395,40 @@ class MainActivity: AppCompatActivity() {
         )
     }
 
-    private fun notifySpeechFinished(){
+    private fun notifySpeechFinished(utteranceId: String?){
+        val gen = utteranceId?.removePrefix("frontier-")?.toIntOrNull() ?: return
+        if (gen != speechGen) return
         runOnUiThread{
             if (::web.isInitialized) web.evaluateJavascript("window.FrontierGuideNative?.onSpeechFinished()",null)
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (ScreenCaptureService.active) tellJs("onScreenShareReady", ScreenCaptureService.currentSession.toString())
+    }
+
     override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?){
         super.onActivityResult(requestCode,resultCode,data)
         when(requestCode){
-            captureCode->if(resultCode==Activity.RESULT_OK && data!=null){
-                val i=Intent(this,ScreenCaptureService::class.java).putExtra("resultCode",resultCode).putExtra("data",data)
-                ContextCompat.startForegroundService(this,i)
-                Toast.makeText(this,"Screen share active",Toast.LENGTH_SHORT).show()
+            captureCode -> if (resultCode == Activity.RESULT_OK && data != null && pendingCaptureSession != 0 && pendingCaptureSession == ScreenCaptureService.acceptSession) {
+                val i = Intent(this, ScreenCaptureService::class.java)
+                    .putExtra("resultCode", resultCode)
+                    .putExtra("data", data)
+                    .putExtra("session", pendingCaptureSession)
+                ContextCompat.startForegroundService(this, i)
+            } else if (resultCode == Activity.RESULT_OK) {
+                tellJs("onScreenShareStopped")
+            } else {
+                ScreenCaptureService.acceptSession = -1
+                tellJs("onScreenShareDenied", "Screen share was cancelled.")
             }
-            voiceCode->if(resultCode==Activity.RESULT_OK){
-                val results=data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-                val spoken=results?.firstOrNull().orEmpty()
-                tellJs("onSpeechResult", spoken)
-            }else{
+            voiceCode -> if (intentVoiceGen != voiceGen) {
+                // A Stop or a newer listen owns the microphone now.
+            } else if (resultCode == Activity.RESULT_OK) {
+                val spoken = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull().orEmpty()
+                tellSpeechResult(spoken, intentVoiceGen)
+            } else {
                 tellJs("onSpeechError", "Voice question cancelled. Tap the mic when you are ready.")
             }
             fileChooserCode->{
@@ -310,11 +442,14 @@ class MainActivity: AppCompatActivity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
         when (requestCode) {
-            micCode -> if (granted) launchVoiceInput() else permissionDenied(
-                Manifest.permission.RECORD_AUDIO,
-                "Microphone access is needed for Talk. Tap the mic and choose Allow.",
-                "Microphone is blocked for Frontier Guide. Turn it on in Android Settings, then come back and tap the mic."
-            )
+            micCode -> if (granted) launchVoiceInput(pendingVoiceGen) else {
+                pendingVoiceGen = null
+                permissionDenied(
+                    Manifest.permission.RECORD_AUDIO,
+                    "Microphone access is needed for Talk. Tap the mic and choose Allow.",
+                    "Microphone is blocked for Frontier Guide. Turn it on in Android Settings, then come back and tap the mic."
+                )
+            }
             cameraCode -> if (granted) tellJs("onCameraGranted") else {
                 val blocked = !ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.CAMERA)
                 tellJs(
@@ -325,13 +460,17 @@ class MainActivity: AppCompatActivity() {
                 if (blocked) openAppSettings()
             }
             notificationCode -> if (granted) beginScreenShare() else {
-                Toast.makeText(this, "Allow notifications so screen share can stay running, then try again.", Toast.LENGTH_LONG).show()
+                tellJs("onScreenShareDenied", "Allow notifications so screen share can stay running, then try again.")
             }
         }
     }
 
     override fun onDestroy(){
+        try { unregisterReceiver(captureReceiver) } catch (_: IllegalArgumentException) {}
+        coachOverlay.hide()
+        cancelOwnedRecognizer()
         if (isFinishing) stopService(Intent(this, ScreenCaptureService::class.java))
+        speechGen += 1
         speech?.stop()
         speech?.shutdown()
         speech=null
