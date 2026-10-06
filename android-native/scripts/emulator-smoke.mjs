@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createConnection } from "node:net";
+import { get as httpGet } from "node:http";
 import { randomBytes } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
@@ -176,6 +177,16 @@ function adbOk(...args) {
   return { status: result.status, out: `${result.stdout || ""}${result.stderr || ""}` };
 }
 
+function dumpLogs() {
+  console.error(adbOk("logcat", "-d", "-t", "300", "-s", "FrontierGuide:V", "chromium:E", "AndroidRuntime:E").out.slice(-6000));
+}
+
+process.on("unhandledRejection", error => {
+  console.error(error);
+  dumpLogs();
+  process.exit(1);
+});
+
 adb("wait-for-device");
 adb("install", "-r", "-t", apk);
 for (const permission of [
@@ -206,13 +217,33 @@ if (!socket) {
 adb("forward", "--remove-all");
 adb("forward", "tcp:9222", `localabstract:${socket}`);
 
-async function devtoolsJson() {
-  const response = await fetch("http://127.0.0.1:9222/json", { signal: AbortSignal.timeout(20000) });
-  if (!response.ok) throw new Error(`DevTools list returned ${response.status}`);
-  const pages = await response.json();
-  const page = pages.find(item => item.type === "page" && item.webSocketDebuggerUrl);
-  if (!page) throw new Error(`No WebView page in ${JSON.stringify(pages)}`);
-  return page;
+function devtoolsJson() {
+  return new Promise((resolve, reject) => {
+    const request = httpGet("http://127.0.0.1:9222/json", { headers: { Connection: "close" } }, response => {
+      const chunks = [];
+      response.on("data", chunk => chunks.push(chunk));
+      response.on("end", () => {
+        response.socket?.destroy();
+        try {
+          if (response.statusCode !== 200) {
+            reject(new Error(`DevTools list returned ${response.statusCode}`));
+            return;
+          }
+          const pages = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          const page = pages.find(item => item.type === "page" && item.webSocketDebuggerUrl);
+          if (!page) reject(new Error(`No WebView page in ${JSON.stringify(pages)}`));
+          else resolve(page);
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+    request.setTimeout(20000, () => {
+      request.destroy();
+      reject(new Error("DevTools list timed out"));
+    });
+    request.on("error", reject);
+  });
 }
 
 let page;
@@ -228,13 +259,14 @@ for (let attempt = 0; attempt < 20; attempt += 1) {
   await delay(1500);
 }
 if (!page?.webSocketDebuggerUrl) throw new Error("WebView page never became ready");
+await delay(400);
 
-const ws = await connectDevtools(page.webSocketDebuggerUrl);
 const pending = new Map();
 const consoleErrors = [];
 let nextId = 0;
+let ws;
 
-function send(method, params = {}, timeoutMs = 20000) {
+function send(method, params = {}, timeoutMs = 30000) {
   const id = ++nextId;
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -246,25 +278,70 @@ function send(method, params = {}, timeoutMs = 20000) {
   });
 }
 
-ws.onmessage = text => {
-  const message = JSON.parse(text);
-  if (message.id && pending.has(message.id)) {
-    const waiter = pending.get(message.id);
-    pending.delete(message.id);
-    clearTimeout(waiter.timer);
-    if (message.error) waiter.reject(new Error(JSON.stringify(message.error)));
-    else waiter.resolve(message.result);
-    return;
-  }
-  if (message.method === "Runtime.consoleAPICalled" && message.params?.type === "error") {
-    consoleErrors.push(JSON.stringify(message.params.args || message.params));
-  }
-  if (message.method === "Runtime.exceptionThrown") {
-    consoleErrors.push(message.params?.exceptionDetails?.text || JSON.stringify(message.params));
-  }
-};
+function attachSocket(socket) {
+  ws = socket;
+  ws.binaryType = "arraybuffer";
+  ws.addEventListener("message", event => {
+    if (ws !== socket) return;
+    const text = typeof event.data === "string" ? event.data : Buffer.from(event.data).toString("utf8");
+    const message = JSON.parse(text);
+    if (message.id && pending.has(message.id)) {
+      const waiter = pending.get(message.id);
+      pending.delete(message.id);
+      clearTimeout(waiter.timer);
+      if (message.error) waiter.reject(new Error(JSON.stringify(message.error)));
+      else waiter.resolve(message.result);
+      return;
+    }
+    if (message.method === "Runtime.consoleAPICalled" && message.params?.type === "error") {
+      consoleErrors.push(JSON.stringify(message.params.args || message.params));
+    }
+    if (message.method === "Runtime.exceptionThrown") {
+      consoleErrors.push(message.params?.exceptionDetails?.text || JSON.stringify(message.params));
+    }
+  });
+  ws.addEventListener("close", () => {
+    if (ws !== socket) return;
+    for (const waiter of pending.values()) {
+      clearTimeout(waiter.timer);
+      waiter.reject(new Error("DevTools websocket closed"));
+    }
+    pending.clear();
+  });
+}
 
-await send("Runtime.enable");
+async function openPage() {
+  const target = new URL(page.webSocketDebuggerUrl);
+  target.hostname = "127.0.0.1";
+  target.port = "9222";
+  const socket = new WebSocket(target);
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("DevTools websocket did not open")), 20000);
+    socket.addEventListener("open", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    socket.addEventListener("error", () => {
+      clearTimeout(timer);
+      reject(new Error("DevTools websocket failed"));
+    });
+  });
+  attachSocket(socket);
+}
+
+await openPage();
+try {
+  await send("Runtime.enable");
+} catch (error) {
+  console.error("Runtime.enable failed once, retrying", error.message);
+  dumpLogs();
+  const previous = ws;
+  ws = null;
+  previous.close();
+  await delay(1000);
+  await openPage();
+  await send("Runtime.enable");
+}
 await send("Console.enable").catch(() => {});
 
 let snapshot;
