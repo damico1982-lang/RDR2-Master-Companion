@@ -191,8 +191,12 @@ function adbOk(...args) {
   return { status: result.status, out: `${result.stdout || ""}${result.stderr || ""}` };
 }
 
+function appLog() {
+  return adbOk("logcat", "-d", "-s", "FrontierGuide:I", "chromium:E", "AndroidRuntime:E").out;
+}
+
 function dumpLogs() {
-  console.error(adbOk("logcat", "-d", "-t", "180").out.slice(-7000));
+  console.error(appLog().slice(-7000));
 }
 
 process.on("unhandledRejection", error => {
@@ -215,26 +219,21 @@ adb("shell", "am", "start", "-n", "com.frontierguide.app/.MainActivity");
 
 let appPid = "";
 let socketName = "";
+let guideLog = "";
 for (let attempt = 0; attempt < 45; attempt += 1) {
   appPid = adbOk("shell", "pidof", "com.frontierguide.app").out.trim().split(/\s+/).filter(Boolean)[0] || "";
+  guideLog = appLog();
   if (appPid) {
     const listed = adbOk("shell", "cat", "/proc/net/unix").out;
     const name = `webview_devtools_remote_${appPid}`;
-    if (listed.includes(name)) {
-      socketName = name;
-      if (adbOk("logcat", "-d", "-t", "500").out.includes("page finished")) break;
-    }
+    if (listed.includes(name)) socketName = name;
   }
+  if (socketName && guideLog.includes("page finished")) break;
   await delay(2000);
 }
-if (!socketName) {
-  dumpLogs();
-  throw new Error(`WebView DevTools socket for Frontier Guide pid ${appPid || "missing"} never appeared`);
-}
-const bootLog = adbOk("logcat", "-d", "-t", "500").out;
-if (!bootLog.includes("page finished")) {
-  console.error(bootLog.slice(-7000));
-  throw new Error("Frontier Guide did not finish loading its page");
+console.log(guideLog.slice(-4000));
+if (!socketName || !guideLog.includes("page finished")) {
+  throw new Error(`Frontier Guide did not finish loading. pid ${appPid || "missing"}, devtools ${socketName || "missing"}`);
 }
 console.log(`devtools socket ${socketName} pid ${appPid}`);
 
