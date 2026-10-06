@@ -8,6 +8,7 @@ import android.graphics.Color
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
@@ -32,6 +33,9 @@ class MainActivity: AppCompatActivity() {
     private val captureCode=9001
     private val voiceCode=9002
     private val fileChooserCode=9003
+    private val micCode=45
+    private val cameraCode=46
+    private val notificationCode=47
     private var fileChooserCallback:ValueCallback<Array<Uri>>?=null
     private var speech: TextToSpeech?=null
     private var speechReady=false
@@ -41,7 +45,6 @@ class MainActivity: AppCompatActivity() {
         super.onCreate(savedInstanceState)
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
         projectionManager=getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        requestNeededPermissions()
         loader=WebViewAssetLoader.Builder()
             .setDomain("appassets.androidplatform.net")
             .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
@@ -84,6 +87,8 @@ class MainActivity: AppCompatActivity() {
         next.settings.safeBrowsingEnabled=false
         next.webViewClient=AssetClient()
         next.webChromeClient=GuideChrome()
+        next.isFocusable = true
+        next.isFocusableInTouchMode = true
         next.addJavascriptInterface(Bridge(),"AndroidBridge")
         web=next
         setContentView(web)
@@ -114,6 +119,11 @@ class MainActivity: AppCompatActivity() {
         }
         override fun onPageFinished(view: WebView?, url: String?) {
             Log.i(TAG, "page finished $url")
+            view?.requestFocus()
+            view?.evaluateJavascript(
+                "window.frontierSetVersion && window.frontierSetVersion(${JSONObject.quote(BuildConfig.VERSION_NAME)})",
+                null
+            )
         }
         override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
             if (request?.isForMainFrame == true) {
@@ -169,7 +179,16 @@ class MainActivity: AppCompatActivity() {
     }
 
     inner class Bridge {
-        @JavascriptInterface fun startScreenShare(){ runOnUiThread{ startActivityForResult(projectionManager.createScreenCaptureIntent(),captureCode) } }
+        @JavascriptInterface fun hasMicrophonePermission(): Boolean = hasPermission(Manifest.permission.RECORD_AUDIO)
+        @JavascriptInterface fun requestMicrophonePermission() { runOnUiThread { launchVoiceInput() } }
+        @JavascriptInterface fun hasCameraPermission(): Boolean = hasPermission(Manifest.permission.CAMERA)
+        @JavascriptInterface fun requestCameraPermission() {
+            runOnUiThread {
+                if (hasPermission(Manifest.permission.CAMERA)) tellJs("onCameraGranted")
+                else askFor(Manifest.permission.CAMERA, cameraCode)
+            }
+        }
+        @JavascriptInterface fun startScreenShare(){ runOnUiThread{ beginScreenShare() } }
         @JavascriptInterface fun stopScreenShare(){ stopService(Intent(this@MainActivity,ScreenCaptureService::class.java)) }
         @JavascriptInterface fun getLatestScreenDataUrl():String { val f=File(cacheDir,"latest_screen.jpg"); if(!f.exists())return ""; return "data:image/jpeg;base64,"+Base64.encodeToString(f.readBytes(),Base64.NO_WRAP) }
         @JavascriptInterface fun startVoiceInput(){ runOnUiThread{ launchVoiceInput() } }
@@ -187,10 +206,27 @@ class MainActivity: AppCompatActivity() {
         @JavascriptInterface fun stopSpeaking(){ runOnUiThread{ speech?.stop() } }
     }
 
+    private fun hasPermission(permission: String): Boolean =
+        ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+
+    private fun askFor(permission: String, requestCode: Int) {
+        ActivityCompat.requestPermissions(this, arrayOf(permission), requestCode)
+    }
+
+    private fun tellJs(method: String, message: String? = null) {
+        if (!::web.isInitialized) return
+        val call = if (message == null) "window.FrontierGuideNative?.$method()"
+            else "window.FrontierGuideNative?.$method(${JSONObject.quote(message)})"
+        web.evaluateJavascript(call, null)
+    }
+
+    private fun openAppSettings() {
+        startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
+    }
+
     private fun launchVoiceInput(){
-        if(ContextCompat.checkSelfPermission(this,Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){
-            ActivityCompat.requestPermissions(this,arrayOf(Manifest.permission.RECORD_AUDIO),45)
-            web.evaluateJavascript("window.FrontierGuideNative?.onSpeechError('Allow microphone access, then tap the mic again.')",null)
+        if (!hasPermission(Manifest.permission.RECORD_AUDIO)) {
+            askFor(Manifest.permission.RECORD_AUDIO, micCode)
             return
         }
         try{
@@ -201,8 +237,22 @@ class MainActivity: AppCompatActivity() {
                 .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS,1)
             startActivityForResult(intent,voiceCode)
         }catch(_:ActivityNotFoundException){
-            web.evaluateJavascript("window.FrontierGuideNative?.onSpeechError('No speech recognition service is installed on this phone.')",null)
+            tellJs("onSpeechError", "No speech recognition service is installed on this phone.")
         }
+    }
+
+    private fun beginScreenShare() {
+        if (android.os.Build.VERSION.SDK_INT >= 33 && !hasPermission(Manifest.permission.POST_NOTIFICATIONS)) {
+            askFor(Manifest.permission.POST_NOTIFICATIONS, notificationCode)
+            return
+        }
+        startActivityForResult(projectionManager.createScreenCaptureIntent(), captureCode)
+    }
+
+    private fun permissionDenied(permission: String, retryMessage: String, blockedMessage: String) {
+        val blocked = !ActivityCompat.shouldShowRequestPermissionRationale(this, permission)
+        tellJs("onSpeechError", if (blocked) blockedMessage else retryMessage)
+        if (blocked) openAppSettings()
     }
 
     private fun chooseDeepMaleVoice(engine: TextToSpeech): Voice? {
@@ -245,9 +295,9 @@ class MainActivity: AppCompatActivity() {
             voiceCode->if(resultCode==Activity.RESULT_OK){
                 val results=data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
                 val spoken=results?.firstOrNull().orEmpty()
-                web.evaluateJavascript("window.FrontierGuideNative?.onSpeechResult(${JSONObject.quote(spoken)})",null)
+                tellJs("onSpeechResult", spoken)
             }else{
-                web.evaluateJavascript("window.FrontierGuideNative?.onSpeechError('Voice question cancelled. Tap the mic when you are ready.')",null)
+                tellJs("onSpeechError", "Voice question cancelled. Tap the mic when you are ready.")
             }
             fileChooserCode->{
                 fileChooserCallback?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode,data))
@@ -256,11 +306,28 @@ class MainActivity: AppCompatActivity() {
         }
     }
 
-    private fun requestNeededPermissions(){
-        val need=mutableListOf<String>()
-        for(p in listOf(Manifest.permission.CAMERA,Manifest.permission.RECORD_AUDIO))if(ContextCompat.checkSelfPermission(this,p)!=PackageManager.PERMISSION_GRANTED)need+=p
-        if(android.os.Build.VERSION.SDK_INT>=33 && ContextCompat.checkSelfPermission(this,Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)need+=Manifest.permission.POST_NOTIFICATIONS
-        if(need.isNotEmpty())ActivityCompat.requestPermissions(this,need.toTypedArray(),44)
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+        when (requestCode) {
+            micCode -> if (granted) launchVoiceInput() else permissionDenied(
+                Manifest.permission.RECORD_AUDIO,
+                "Microphone access is needed for Talk. Tap the mic and choose Allow.",
+                "Microphone is blocked for Frontier Guide. Turn it on in Android Settings, then come back and tap the mic."
+            )
+            cameraCode -> if (granted) tellJs("onCameraGranted") else {
+                val blocked = !ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.CAMERA)
+                tellJs(
+                    "onCameraDenied",
+                    if (blocked) "Camera is blocked for Frontier Guide. Turn it on in Android Settings, then tap Show Camera again."
+                    else "Camera access is needed to show the TV. Tap Show Camera and choose Allow."
+                )
+                if (blocked) openAppSettings()
+            }
+            notificationCode -> if (granted) beginScreenShare() else {
+                Toast.makeText(this, "Allow notifications so screen share can stay running, then try again.", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     override fun onDestroy(){

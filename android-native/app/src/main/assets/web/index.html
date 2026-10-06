@@ -18,7 +18,7 @@
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark" aria-hidden="true"><span>FG</span></div>
-        <div class="brand-copy"><strong>Frontier Guide</strong><small>RDR2 Master Companion</small></div>
+        <div class="brand-copy"><strong>Frontier Guide</strong><small id="buildLabel">RDR2 Master Companion · 1.4.2</small></div>
       </div>
       <button id="onlineDot" class="status-pill" aria-label="connection status"><span></span> Offline ready</button>
     </header>
@@ -257,6 +257,46 @@
     <div class="dialog-actions"><button id="startNativeScreen" class="send">Start Android screen share</button><button id="useScreenFrame" class="ghost hidden">Use latest frame</button><button id="analyzeScreenFrame" class="ghost hidden">Analyze &amp; speak</button></div>
   </dialog>
 
-  <script src="app.js"></script>
+  <script>
+    window.FRONTIER_VERSION = "1.4.2";
+    window.frontierSetVersion = function (version) {
+      if (version) window.FRONTIER_VERSION = version;
+      var label = document.getElementById("buildLabel");
+      if (label) label.textContent = "RDR2 Master Companion · " + window.FRONTIER_VERSION;
+      var panel = document.getElementById("bootError");
+      if (panel) panel.textContent = panel.getAttribute("data-prefix") + panel.getAttribute("data-message");
+    };
+    window.frontierReport = function (message) {
+      var text = String(message || "Unknown error");
+      var panel = document.getElementById("bootError");
+      if (!panel) {
+        panel = document.createElement("div");
+        panel.id = "bootError";
+        panel.setAttribute("role", "alert");
+        panel.style.cssText = "position:fixed;left:10px;right:10px;bottom:12px;z-index:100000;max-height:46vh;overflow:auto;padding:14px 16px;border:2px solid #d23a3d;border-radius:8px;background:#1a0d0c;color:#eadfca;font:14px/1.45 sans-serif;white-space:pre-wrap;pointer-events:auto;";
+        document.body.appendChild(panel);
+      }
+      panel.setAttribute("data-prefix", "Frontier Guide " + window.FRONTIER_VERSION + " hit a problem. Screenshot this panel.\n\n");
+      panel.setAttribute("data-message", text);
+      panel.textContent = panel.getAttribute("data-prefix") + text;
+    };
+    window.onerror = function (message, source, line, column) {
+      window.frontierReport(String(message) + "\n" + (source || "app.js") + ":" + line + ":" + column);
+    };
+    window.addEventListener("unhandledrejection", function (event) {
+      var reason = event.reason;
+      window.frontierReport("Promise: " + (reason && (reason.stack || reason.message) || reason));
+    });
+    document.querySelectorAll("[data-view]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        if (window.__frontierBound) return;
+        var view = document.getElementById(button.getAttribute("data-view") + "View");
+        if (!view) return;
+        document.querySelectorAll(".view").forEach(function (element) { element.classList.remove("active"); });
+        view.classList.add("active");
+      });
+    });
+  </script>
+  <script src="app.js" onerror="frontierReport('app.js did not load. The page buttons have nothing to run.')"></script>
 </body>
 </html>

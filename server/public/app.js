@@ -115,6 +115,7 @@ function setView(view) {
 $$('[data-view]').forEach(button => {
   button.addEventListener("click", () => setView(button.dataset.view));
 });
+window.__frontierBound = true;
 
 $$(".mode").forEach(button => {
   button.addEventListener("click", () => {
@@ -203,7 +204,7 @@ function cleanForSpeech(text) {
     .replace(/[*_`#>|]/g, "")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 5_000);
+    .slice(0, 5000);
 }
 
 function updateVoiceStatus(label, transcript = "") {
@@ -535,11 +536,20 @@ function startListening() {
   state.listening = true;
   updateVoiceStatus("Listening…", "Ask about the screen, a mission, gold, money, collectibles, or your next move.");
   try {
+    if (window.AndroidBridge?.requestMicrophonePermission) {
+      if (window.AndroidBridge.hasMicrophonePermission && !window.AndroidBridge.hasMicrophonePermission()) {
+        updateVoiceStatus("Microphone", "Android is asking for microphone access. Choose Allow, then speak.");
+      }
+      window.AndroidBridge.requestMicrophonePermission();
+      return;
+    }
     if (window.AndroidBridge?.startVoiceInput) {
       window.AndroidBridge.startVoiceInput();
       return;
     }
-  } catch {}
+  } catch (error) {
+    window.frontierReport?.(error && (error.stack || error.message) || error);
+  }
   startBrowserRecognition();
 }
 
@@ -562,6 +572,12 @@ window.FrontierGuideNative = {
   onSpeechFinished() {
     updateVoiceStatus(state.handsFree ? "Listening again…" : "Ready for your next question");
     if (state.handsFree) window.setTimeout(startListening, 500);
+  },
+  onCameraGranted() {
+    openCamera();
+  },
+  onCameraDenied(message) {
+    window.alert(message || "Camera permission was not available.");
   }
 };
 
@@ -1021,7 +1037,7 @@ function attachImage(dataUrl) {
 
 async function imageFileToDataUrl(file) {
   if (!file?.type?.startsWith("image/")) throw new Error("Choose a JPG, PNG, WEBP, or GIF image.");
-  if (file.size > 20_000_000) throw new Error("That image is too large. Choose one under 20 MB.");
+  if (file.size > 20000000) throw new Error("That image is too large. Choose one under 20 MB.");
   const source = await new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
@@ -1034,7 +1050,7 @@ async function imageFileToDataUrl(file) {
     element.onerror = () => reject(new Error("The image format could not be opened."));
     element.src = source;
   });
-  const maxSide = 1_600;
+  const maxSide = 1600;
   const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
@@ -1063,6 +1079,10 @@ $("#analyzeImageBtn").onclick = () => {
 
 async function openCamera() {
   try {
+    if (window.AndroidBridge?.hasCameraPermission && !window.AndroidBridge.hasCameraPermission()) {
+      window.AndroidBridge.requestCameraPermission();
+      return;
+    }
     state.cameraStream?.getTracks().forEach(track => track.stop());
     state.cameraStream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: state.cameraFacing },
@@ -1089,7 +1109,7 @@ $("#flipCamera").onclick = async () => {
 function captureCameraFrame() {
   const video = $("#cameraVideo");
   const canvas = $("#cameraCanvas");
-  canvas.width = video.videoWidth || 1_280;
+  canvas.width = video.videoWidth || 1280;
   canvas.height = video.videoHeight || 720;
   canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL("image/jpeg", 0.82);
@@ -1135,7 +1155,7 @@ $("#liveCoachCamera").onclick = () => {
   $("#liveCoachCamera").textContent = "Stop Live Coach";
   $("#liveCoachCamera").classList.add("active");
   runLiveCoachFrame();
-  state.coachTimer = setInterval(runLiveCoachFrame, 15_000);
+  state.coachTimer = setInterval(runLiveCoachFrame, 15000);
 };
 
 function nativeAvailable() {
@@ -1167,7 +1187,7 @@ $("#startNativeScreen").onclick = () => {
     $("#useScreenFrame").classList.remove("hidden");
     $("#analyzeScreenFrame").classList.remove("hidden");
     clearInterval(state.screenTimer);
-    state.screenTimer = setInterval(refreshNativeFrame, 1_800);
+    state.screenTimer = setInterval(refreshNativeFrame, 1800);
   } catch {
     alert("Android screen capture could not start.");
   }

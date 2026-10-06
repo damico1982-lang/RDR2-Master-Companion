@@ -1,4 +1,4 @@
-const CACHE = "frontier-guide-v8";
+const CACHE = "frontier-guide-v9";
 const ASSETS = ["./","index.html","styles.css","app.js","manifest.webmanifest","icon.svg","content/guide.json","content/map.json","content/legendaries.json","content/animals.json","content/secrets.json","content/hidden-places.json"];
 
 self.addEventListener("install", event => {
