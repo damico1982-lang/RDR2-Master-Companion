@@ -1,20 +1,22 @@
 # RDR2 Master Companion
 
-Frontier Guide is an unofficial, phone-first companion for Red Dead Redemption 2 and Red Dead Online. Android v1.3.1 combines a hands-free call-and-response guide, offline knowledge, live AI, photo uploads, front/rear camera coaching, Android screen capture, a built-in field map, and current web-update scans.
+Frontier Guide is an unofficial, phone-first companion for Red Dead Redemption 2 and Red Dead Online. Android v1.4.0 combines a conversational guide that remembers the chat, offline legendary animals, perfect-pelt weapons, secrets, and hidden places, a spoken server voice with a device fallback, photo uploads, front/rear camera coaching, Android screen capture, a built-in field map, and current web-update scans.
 
 The same themed interface is also served as an installable web app from the live Render URL. Open `https://frontier-guide-api.onrender.com` to use it in a mobile or desktop browser. First-party web and Android clients connect automatically; the shared access key remains available for CLI or other authorized clients. Browser camera and voice modes work over HTTPS; Android screen capture remains exclusive to the APK.
 
-Current release: Android and server **1.3.1**.
+Current release: Android and server **1.4.0**.
 
 The interface uses an original black, blood-red, parchment, and weathered-leather frontier theme. No Rockstar artwork or game assets are bundled.
 
 ## What is included
 
 - Story Mode, Online, and combined guide modes
-- call-and-response voice input, spoken answers, memory, and optional continuous Hands-Free mode
-- offline searchable guide content
+- conversational guide with multi-turn memory, streamed replies, and bundled Story Mode notes for legendary animals, weapons, secrets, and hidden places
+- spoken answers from a server-side neural voice when the AI key has capacity, with the phone's deepest male voice as the fallback
+- offline searchable guide content, including Legendary Animals, Animals & Weapons, Secrets, and Hidden Places
 - photo/screenshot uploads, front/rear camera capture, live camera coaching, and Android latest-screen-frame questions
-- built-in schematic map for gold, treasure chains, valuables, Online gold activities, and Fence services
+- built-in schematic map for gold, treasure chains, legendary animals, secrets, valuables, Online gold activities, and Fence services
+- a second Hidden Places map for caves, waterfall interiors, mines, cellars, and hard mountain spots
 - protected OpenAI Responses API backend
 - optional live web search with returned source links
 - Render Blueprint deployment
@@ -57,6 +59,9 @@ If Render assigns a different public hostname, use the exact URL displayed on th
 | `ALLOWED_ORIGINS` | Set by Blueprint | `https://appassets.androidplatform.net` |
 | `NODE_VERSION` | Set by Blueprint | `22.22.0` |
 | `OPENAI_TIMEOUT_MS` | Set by Blueprint | `90000` |
+| `OPENAI_TTS_MODEL` | Set by Blueprint | `gpt-4o-mini-tts` |
+| `OPENAI_TTS_VOICE` | Set by Blueprint | `onyx` |
+| `OPENAI_TTS_INSTRUCTIONS` | Set by Blueprint | Deep, warm male delivery. OpenAI does not label voices by ethnicity; the instruction asks for that delivery. |
 | `RATE_LIMIT_MAX` | Set by Blueprint | `30` |
 | `RATE_LIMIT_WINDOW_MS` | Set by Blueprint | `60000` |
 | `PORT` | Supplied by Render | Local default is `3000` |
@@ -65,7 +70,7 @@ If Render assigns a different public hostname, use the exact URL displayed on th
 
 ## Android connection settings
 
-Version 1.3.1 fills the hosted server URL automatically. Settings remain available for diagnostics or a custom deployment:
+Version 1.4.0 fills the hosted server URL automatically. Settings remain available for diagnostics or a custom deployment:
 
 | Android field | Value |
 |---|---|

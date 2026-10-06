@@ -3,7 +3,8 @@
 This Node/Express service powers the Android app's optional live features:
 
 - `GET /api/health` — public Render health and configuration check
-- `POST /api/ask` — protected text, camera-frame, and screen-frame questions
+- `POST /api/ask` — protected text, camera-frame, and screen-frame questions. Send `"stream": true` for server-sent deltas.
+- `POST /api/speak` — protected neural speech for a guide answer. Uses the same `OPENAI_API_KEY`. Returns `audio/mpeg`, or JSON if the provider is out of capacity.
 - `POST /api/live-update` — protected current Red Dead / Rockstar scan with web search
 
 ## Run locally
@@ -45,6 +46,9 @@ The health route must remain public because Render health probes cannot supply `
 - `ALLOWED_ORIGINS` — comma-separated WebView/browser origins; Android uses `https://appassets.androidplatform.net`.
 - `OPENAI_BASE_URL` — optional; defaults to `https://api.openai.com/v1`.
 - `OPENAI_TIMEOUT_MS` — optional; defaults to `90000`.
+- `OPENAI_TTS_MODEL` — optional; defaults to `gpt-4o-mini-tts`.
+- `OPENAI_TTS_VOICE` — optional; defaults to `onyx`, the deepest stock male voice. `ash` is the smoother alternate.
+- `OPENAI_TTS_INSTRUCTIONS` — optional style line for `gpt-4o-mini-tts`. The default asks for a deep, warm Black male delivery. OpenAI does not publish an ethnicity label for voices, so this is delivery guidance, not a named actor. Ignored on older `tts-1` models.
 - `RATE_LIMIT_MAX` — optional; defaults to `30` requests per window per client IP.
 - `RATE_LIMIT_WINDOW_MS` — optional; defaults to `60000`.
 - `PORT` — supplied by Render; local default is `3000`.

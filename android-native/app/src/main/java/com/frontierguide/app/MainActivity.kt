@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.speech.tts.Voice
 import android.util.Base64
 import android.view.ViewGroup
 import android.webkit.*
@@ -42,6 +43,8 @@ class MainActivity: AppCompatActivity() {
             speechReady=status==TextToSpeech.SUCCESS
             if(speechReady){
                 speech?.language=Locale.US
+                speech?.let { engine -> chooseDeepMaleVoice(engine)?.let { engine.voice = it } }
+                speech?.setPitch(0.78f)
                 speech?.setOnUtteranceProgressListener(object:UtteranceProgressListener(){
                     override fun onStart(utteranceId:String?){}
                     override fun onError(utteranceId:String?){ notifySpeechFinished() }
@@ -140,6 +143,23 @@ class MainActivity: AppCompatActivity() {
         }catch(_:ActivityNotFoundException){
             web.evaluateJavascript("window.FrontierGuideNative?.onSpeechError('No speech recognition service is installed on this phone.')",null)
         }
+    }
+
+    private fun chooseDeepMaleVoice(engine: TextToSpeech): Voice? {
+        val voices = engine.voices ?: return null
+        fun described(voice: Voice) = (voice.name + " " + voice.features.joinToString(" ")).lowercase()
+        fun englishMale(voice: Voice): Boolean {
+            if (!voice.locale.language.equals("en", ignoreCase = true)) return false
+            val blob = described(voice)
+            return blob.contains("male") && !blob.contains("female")
+        }
+        val males = voices.filter { englishMale(it) }
+        val pool = if (males.isNotEmpty()) males else voices.filter { it.locale.language.equals("en", ignoreCase = true) }
+        return pool.maxWithOrNull(
+            compareBy<Voice> { it.quality }
+                .thenBy { if (it.isNetworkConnectionRequired) 0 else 1 }
+                .thenBy { if (described(it).contains("deep") || described(it).contains("low")) 1 else 0 }
+        )
     }
 
     private fun notifySpeechFinished(){

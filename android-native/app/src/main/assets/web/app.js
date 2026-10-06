@@ -14,8 +14,19 @@ const state = {
   coachTimer: null,
   coachBusy: false,
   mapLocations: [],
+  baseMap: [],
   mapCategory: "All",
-  selectedMapId: null
+  selectedMapId: null,
+  legendaries: [],
+  animals: [],
+  secrets: [],
+  hiddenPlaces: [],
+  animalSize: "All",
+  animalRegion: "All",
+  hiddenCategory: "All",
+  selectedHiddenId: null,
+  speechAudio: null,
+  speechUrl: ""
 };
 
 const $ = selector => document.querySelector(selector);
@@ -108,6 +119,13 @@ $$(".mode").forEach(button => {
     renderGuide();
     renderMapTags();
     renderMap();
+    renderLegendaries();
+    renderAnimalFilters();
+    renderAnimals();
+    renderSecrets();
+    renderHiddenTags();
+    renderHiddenMap();
+    renderHiddenList();
   });
 });
 
@@ -190,20 +208,36 @@ function updateVoiceStatus(label, transcript = "") {
 function stopSpeaking() {
   try { window.AndroidBridge?.stopSpeaking?.(); } catch {}
   try { window.speechSynthesis?.cancel(); } catch {}
+  if (state.speechAudio) {
+    state.speechAudio.onended = null;
+    state.speechAudio.pause();
+    state.speechAudio = null;
+  }
+  if (state.speechUrl) {
+    URL.revokeObjectURL(state.speechUrl);
+    state.speechUrl = "";
+  }
 }
 
-function speakAnswer(text) {
-  if (!settings.autoSpeak) {
-    if (state.handsFree) window.setTimeout(startListening, 350);
-    return;
-  }
+function pickDeepMaleVoice() {
+  const voices = window.speechSynthesis?.getVoices?.() || [];
+  const english = voices.filter(voice => /^en/i.test(voice.lang || ""));
+  const ranked = english.map(voice => {
+    const name = `${voice.name || ""}`.toLowerCase();
+    let score = 0;
+    if (name.includes("female")) score -= 30;
+    if (name.includes("male")) score += 16;
+    if (/deep|low|daniel|alex|david|fred|arthur|marcus|george|brian/.test(name)) score += 8;
+    return { voice, score };
+  }).sort((left, right) => right.score - left.score);
+  if (ranked[0]?.score > 0) return ranked[0].voice;
+  return english[0] || null;
+}
 
-  const spoken = cleanForSpeech(text);
-  if (!spoken) return;
-  updateVoiceStatus("Frontier is answering", spoken);
+function deviceSpeak(spoken) {
   try {
     if (window.AndroidBridge?.speak) {
-      window.AndroidBridge.speak(spoken, 0.96, 0.92);
+      window.AndroidBridge.speak(spoken, 0.92, 0.78);
       return;
     }
   } catch {}
@@ -211,12 +245,57 @@ function speakAnswer(text) {
   if ("speechSynthesis" in window) {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(spoken);
-    utterance.rate = 0.96;
-    utterance.pitch = 0.92;
-    utterance.onend = () => window.FrontierGuideNative.onSpeechFinished();
+    const voice = pickDeepMaleVoice();
+    if (voice) utterance.voice = voice;
+    utterance.rate = 0.94;
+    utterance.pitch = 0.78;
+    utterance.onend = () => window.FrontierGuideNative?.onSpeechFinished?.();
     utterance.onerror = () => updateVoiceStatus("Voice playback stopped");
     window.speechSynthesis.speak(utterance);
   }
+}
+
+async function speakAnswer(text) {
+  if (!settings.autoSpeak) {
+    if (state.handsFree) window.setTimeout(startListening, 350);
+    return;
+  }
+
+  const spoken = cleanForSpeech(text);
+  if (!spoken) return;
+  stopSpeaking();
+  updateVoiceStatus("Frontier is answering", spoken.slice(0, 180));
+
+  if (settings.api) {
+    try {
+      const response = await fetch(`${settings.api}/api/speak`, {
+        method: "POST",
+        headers: serverHeaders(true),
+        body: JSON.stringify({ text: spoken.slice(0, 3500) })
+      });
+      const type = response.headers.get("content-type") || "";
+      if (response.ok && type.includes("audio")) {
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        state.speechAudio = audio;
+        state.speechUrl = url;
+        audio.onended = () => {
+          URL.revokeObjectURL(url);
+          if (state.speechUrl === url) state.speechUrl = "";
+          state.speechAudio = null;
+          window.FrontierGuideNative?.onSpeechFinished?.();
+        };
+        audio.onerror = () => deviceSpeak(spoken);
+        await audio.play();
+        return;
+      }
+    } catch {
+      // The server voice is optional. The device voice still answers.
+    }
+  }
+
+  deviceSpeak(spoken);
 }
 
 async function askQuestion(question, { fromVoice = false } = {}) {
@@ -225,7 +304,7 @@ async function askQuestion(question, { fromVoice = false } = {}) {
 
   msg("user", cleanQuestion);
   state.history.push({ role: "user", content: cleanQuestion });
-  state.history = state.history.slice(-10);
+  state.history = state.history.slice(-12);
   $("#question").value = "";
   if (fromVoice) updateVoiceStatus("Frontier is thinking", cleanQuestion);
   const loading = msg("assistant", "Thinking");
@@ -233,11 +312,13 @@ async function askQuestion(question, { fromVoice = false } = {}) {
 
   let answer = "";
   let sources = [];
+  const paragraph = loading.querySelector("p");
   try {
     if (!settings.api) {
       answer = localAnswer(cleanQuestion);
+      fillAnswer(paragraph, answer);
     } else {
-      const output = await requestJson("/api/ask", {
+      const response = await fetch(`${settings.api}/api/ask`, {
         method: "POST",
         headers: serverHeaders(true),
         body: JSON.stringify({
@@ -245,23 +326,69 @@ async function askQuestion(question, { fromVoice = false } = {}) {
           mode: state.mode,
           imageDataUrl: state.image,
           live: $("#liveSearch").checked,
+          stream: true,
           history: state.history.slice(0, -1)
         })
       });
-      answer = output.answer || "No answer returned.";
-      sources = output.sources || [];
+      const type = response.headers.get("content-type") || "";
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        const error = new Error(data.error || `Server returned ${response.status}.`);
+        error.status = response.status;
+        throw error;
+      }
+      if (!type.includes("text/event-stream") || !response.body) {
+        const output = await response.json();
+        answer = output.answer || "No answer returned.";
+        sources = output.sources || [];
+        fillAnswer(paragraph, answer);
+      } else {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const chunks = buffer.split("\n\n");
+          buffer = chunks.pop() || "";
+          for (const chunk of chunks) {
+            const dataLine = chunk.split("\n").filter(line => line.startsWith("data:")).map(line => line.slice(5).trim()).join("");
+            if (!dataLine) continue;
+            const event = JSON.parse(dataLine);
+            if (event.type === "delta" && event.text) {
+              answer += event.text;
+              paragraph.textContent = answer;
+              $("#chat").scrollTop = $("#chat").scrollHeight;
+            } else if (event.type === "done") {
+              answer = event.answer || answer;
+              sources = event.sources || [];
+            } else if (event.type === "error") {
+              const error = new Error(event.error || "The live guide stopped early.");
+              error.partial = true;
+              throw error;
+            }
+          }
+        }
+        fillAnswer(paragraph, answer || "No answer returned.");
+      }
     }
   } catch (error) {
     if (error.status === 429) setConnectionState("warning", "AI busy");
     const detail = error.status === 401
       ? "The server access key is missing or incorrect. Open Settings and paste the FRONTIER_CLIENT_TOKEN value."
       : error.message;
-    answer = `AI server: ${detail}\n\nOffline guide result:\n\n${localAnswer(cleanQuestion)}`;
+    if (!answer || !error.partial) {
+      answer = `Live guide: ${detail}\n\n${localAnswer(cleanQuestion)}`;
+    } else {
+      answer = `${answer}\n\nLive guide stopped early. ${detail}`;
+    }
+    fillAnswer(paragraph, answer);
   } finally {
-    loading.remove();
-    msg("assistant", answer, sources);
+    loading.classList.remove("loading");
+    appendSources(loading.querySelector(".message-body"), sources);
     state.history.push({ role: "assistant", content: answer });
-    state.history = state.history.slice(-10);
+    state.history = state.history.slice(-12);
     state.image = null;
     $("#imagePreviewWrap").classList.add("hidden");
     $("#analyzeImageBtn").classList.add("hidden");
@@ -271,21 +398,51 @@ async function askQuestion(question, { fromVoice = false } = {}) {
 }
 
 function localAnswer(question) {
-  const terms = question.toLowerCase().split(/\W+/).filter(term => term.length > 2);
-  const ranked = state.guide
+  const stop = new Set("the and for you your with from that this what where when how are was were not but can all into over near about does just then them they its who have has had will would should could may might than too also only some any out off our their there here get got".split(" "));
+  const words = value => String(value || "").toLowerCase().split(/[^a-z0-9]+/).filter(term => term.length > 2 && !stop.has(term));
+  const current = words(question);
+  const prior = words(state.history.slice(-6, -1).map(item => item.content).join(" "));
+  const entries = [
+    ...state.guide.map(item => ({ title: item.title, body: item.body, mode: item.mode })),
+    ...state.legendaries.map(item => ({
+      title: item.name,
+      mode: item.mode,
+      body: `${item.region}. Near ${item.landmark}. ${item.conditions} ${item.unlock} Weapon: ${item.weapon} ${item.ammo}. Reward: ${item.reward}`.slice(0, 900)
+    })),
+    ...state.animals.map(item => ({
+      title: item.name,
+      mode: item.mode,
+      body: `${item.where} Weapon: ${item.weapon}. ${item.bait ? `Bait: ${item.bait}.` : `Ammo: ${item.ammo}.`} ${item.note || ""}`.slice(0, 500)
+    })),
+    ...state.secrets.map(item => ({
+      title: item.name,
+      mode: item.mode,
+      body: `${item.confirmed === false ? "Not confirmed. " : ""}${item.where} ${item.requirements} Reward: ${item.reward} ${(item.steps || []).join(" ")}`.slice(0, 900)
+    })),
+    ...state.hiddenPlaces.map(item => ({
+      title: item.name,
+      mode: item.mode,
+      body: `${item.category}. ${item.region}. ${item.landmark}. ${item.enter} ${item.contents}`.slice(0, 700)
+    }))
+  ].filter(modeMatches);
+
+  const ranked = entries
     .map(item => {
-      const haystack = `${item.title} ${item.body} ${item.category}`.toLowerCase();
-      const score = terms.reduce((total, term) => total + (haystack.includes(term) ? 1 : 0), 0);
+      const haystack = `${item.title} ${item.body}`.toLowerCase();
+      let score = 0;
+      for (const term of current) if (haystack.includes(term)) score += 2;
+      for (const term of prior) if (haystack.includes(term)) score += 1;
       return [item, score];
     })
     .filter(([, score]) => score > 0)
     .sort((left, right) => right[1] - left[1])
     .slice(0, 3);
 
+  const lead = "Live guide is quiet, so this is straight from the bundled pages.";
   if (!ranked.length) {
-    return "I don't have a strong offline match for that yet. Try the Master Guide, show me a camera frame, or configure the AI server in Settings for full visual and live-web help.";
+    return `${lead} Nothing on file matches that. Try Legendary Animals, Animals & Weapons, Secrets, or Hidden Places.`;
   }
-  return ranked.map(([item], index) => `${index + 1}. ${item.title}: ${item.body}`).join("\n\n");
+  return `${lead}\n\n${ranked.map(([item], index) => `${index + 1}. ${item.title}: ${item.body}`).join("\n\n")}`;
 }
 
 $("#askForm").addEventListener("submit", async event => {
@@ -397,6 +554,372 @@ $("#handsFreeBtn").onclick = () => {
 $("#autoSpeak").checked = settings.autoSpeak;
 $("#autoSpeak").onchange = event => { settings.autoSpeak = event.target.checked; };
 
+function actionButton(className, label, onclick) {
+  const button = document.createElement("button");
+  button.className = className;
+  button.type = "button";
+  button.textContent = label;
+  button.onclick = onclick;
+  return button;
+}
+
+function addField(card, label, value) {
+  if (!value) return;
+  const paragraph = document.createElement("p");
+  const strong = document.createElement("strong");
+  strong.textContent = `${label}. `;
+  paragraph.append(strong, document.createTextNode(value));
+  card.appendChild(paragraph);
+}
+
+function addSteps(card, steps) {
+  if (!steps?.length) return;
+  const list = document.createElement("ol");
+  list.className = "steps";
+  for (const step of steps) {
+    const item = document.createElement("li");
+    item.textContent = step;
+    list.appendChild(item);
+  }
+  card.appendChild(list);
+}
+
+function storyEmpty(container, noun) {
+  const online = state.mode === "online";
+  const card = document.createElement("article");
+  card.className = "card";
+  const title = document.createElement("h3");
+  title.textContent = online ? "Story Mode finds" : "No matches";
+  const body = document.createElement("p");
+  body.textContent = online
+    ? `These ${noun} are Story Mode. Switch Play Mode to Story Mode or Both. Online legendary animals from Harriet and Gus are a separate activity and are not pinned here.`
+    : "Try a shorter search or another filter.";
+  card.append(title, body);
+  container.appendChild(card);
+}
+
+function highlightEntry(id) {
+  window.setTimeout(() => {
+    const card = document.querySelector(`[data-entry="${CSS.escape(id)}"]`);
+    if (!card) return;
+    card.classList.add("highlight");
+    card.scrollIntoView({ block: "center" });
+  }, 40);
+}
+
+function openEntry(view, id) {
+  if (view === "map") {
+    showOnMap(id);
+    return;
+  }
+  if (view === "hidden") {
+    state.hiddenCategory = "All";
+    const place = state.hiddenPlaces.find(item => item.id === id);
+    setView("hidden");
+    renderHiddenTags();
+    renderHiddenMap();
+    renderHiddenList();
+    if (place) showHiddenDetail(place);
+    highlightEntry(id);
+    return;
+  }
+  setView(view);
+  if (view === "legendary") renderLegendaries();
+  if (view === "secrets") renderSecrets();
+  highlightEntry(id);
+}
+
+function showOnMap(id) {
+  const item = state.mapLocations.find(entry => entry.id === id);
+  if (!item || !modeMatches(item)) return;
+  state.mapCategory = item.category;
+  state.selectedMapId = id;
+  setView("map");
+  renderMapTags();
+  showMapDetail(item);
+}
+
+function renderLegendaries() {
+  const query = ($("#legendarySearch")?.value || "").toLowerCase();
+  const items = state.legendaries.filter(item => {
+    const text = `${item.name} ${item.region} ${item.landmark} ${item.reward}`.toLowerCase();
+    return modeMatches(item) && (!query || text.includes(query));
+  });
+  const results = $("#legendaryResults");
+  if (!results) return;
+  results.replaceChildren();
+  $("#legendaryCount").textContent = `${items.length} legendary animal${items.length === 1 ? "" : "s"}`;
+  if (!items.length) {
+    storyEmpty(results, "legendary hunts");
+    return;
+  }
+  for (const item of items) {
+    const card = document.createElement("article");
+    card.className = "card";
+    card.dataset.entry = item.id;
+    const title = document.createElement("h3");
+    title.textContent = item.name;
+    card.appendChild(title);
+    addField(card, "Where", `${item.region}. Nearest landmark: ${item.landmark}.`);
+    addField(card, "When", item.conditions);
+    addField(card, "Unlock", item.unlock);
+    addField(card, "Weapon", `${item.weapon} ${item.ammo}`);
+    addField(card, "Reward", item.reward);
+    const actions = document.createElement("div");
+    actions.className = "card-actions";
+    actions.appendChild(actionButton("ghost compact", "Show on map", () => showOnMap(`leg-${item.id}`)));
+    card.appendChild(actions);
+    results.appendChild(card);
+  }
+}
+
+function animalRecords() {
+  const legendary = state.legendaries.map(item => ({
+    id: `hunt-${item.id}`,
+    name: item.name,
+    size: "legendary",
+    legendary: true,
+    regions: [item.regionName],
+    where: `${item.region}. ${item.landmark}.`,
+    weapon: item.weapon,
+    ammo: item.ammo,
+    mode: item.mode,
+    note: "Pelt quality is not graded. The trinket and the full hunt are on the Legendary Animals page.",
+    linkId: item.id
+  }));
+  return [...state.animals, ...legendary];
+}
+
+function renderAnimalFilters() {
+  const sizes = [["All", "All"], ["small", "Small"], ["medium", "Medium"], ["large", "Large"], ["bird", "Birds"], ["fish", "Fish"], ["legendary", "Legendary"]];
+  const regions = ["All", "Ambarino", "New Hanover", "Lemoyne", "West Elizabeth", "New Austin", "Guarma"];
+  const sizeRow = $("#animalSizeTags");
+  const regionRow = $("#animalRegionTags");
+  if (!sizeRow || !regionRow) return;
+  sizeRow.replaceChildren();
+  regionRow.replaceChildren();
+  for (const [value, label] of sizes) {
+    const button = document.createElement("button");
+    button.className = `tag${state.animalSize === value ? " active" : ""}`;
+    button.textContent = label;
+    button.onclick = () => {
+      state.animalSize = value;
+      renderAnimalFilters();
+      renderAnimals();
+    };
+    sizeRow.appendChild(button);
+  }
+  for (const region of regions) {
+    const button = document.createElement("button");
+    button.className = `tag${state.animalRegion === region ? " active" : ""}`;
+    button.textContent = region;
+    button.onclick = () => {
+      state.animalRegion = region;
+      renderAnimalFilters();
+      renderAnimals();
+    };
+    regionRow.appendChild(button);
+  }
+}
+
+function renderAnimals() {
+  const query = ($("#animalSearch")?.value || "").toLowerCase();
+  const items = animalRecords().filter(item => {
+    if (!modeMatches(item)) return false;
+    const isLegendary = item.size === "legendary" || item.legendary === true;
+    if (state.animalSize === "legendary" && !isLegendary) return false;
+    if (state.animalSize === "fish" && item.size !== "fish") return false;
+    if (!["All", "legendary", "fish"].includes(state.animalSize) && item.size !== state.animalSize) return false;
+    if (state.animalRegion !== "All") {
+      const regions = item.regions || [];
+      if (!regions.includes(state.animalRegion) && !regions.includes("Widespread")) return false;
+    }
+    const text = `${item.name} ${item.where} ${item.weapon} ${item.ammo} ${item.bait || ""} ${item.note || ""}`.toLowerCase();
+    return !query || text.includes(query);
+  });
+  const results = $("#animalResults");
+  if (!results) return;
+  results.replaceChildren();
+  $("#animalCount").textContent = `${items.length} entr${items.length === 1 ? "y" : "ies"}`;
+  if (!items.length) {
+    storyEmpty(results, "animals");
+    return;
+  }
+  for (const item of items) {
+    const card = document.createElement("article");
+    card.className = "card";
+    card.dataset.entry = item.id;
+    const title = document.createElement("h3");
+    title.textContent = item.name;
+    card.appendChild(title);
+    const sizeLabel = item.size === "legendary" ? "Legendary animal" : item.legendary ? "Legendary fish" : item.size;
+    addField(card, "Class", `${sizeLabel}. ${(item.regions || []).join(", ")}.`);
+    addField(card, "Where", item.where);
+    addField(card, item.bait ? "Bait" : "Weapon", item.bait ? `${item.weapon}. ${item.bait}.` : `${item.weapon}. ${item.ammo}.`);
+    if (item.note) addField(card, "Note", item.note);
+    if (item.linkId) {
+      const actions = document.createElement("div");
+      actions.className = "card-actions";
+      actions.appendChild(actionButton("ghost compact", "Open legendary page", () => openEntry("legendary", item.linkId)));
+      card.appendChild(actions);
+    }
+    results.appendChild(card);
+  }
+}
+
+function renderSecrets() {
+  const query = ($("#secretSearch")?.value || "").toLowerCase();
+  const items = state.secrets.filter(item => {
+    const text = `${item.name} ${item.region} ${item.where} ${item.reward} ${(item.steps || []).join(" ")}`.toLowerCase();
+    return modeMatches(item) && (!query || text.includes(query));
+  });
+  const results = $("#secretResults");
+  if (!results) return;
+  results.replaceChildren();
+  $("#secretCount").textContent = `${items.length} secret${items.length === 1 ? "" : "s"}`;
+  if (!items.length) {
+    storyEmpty(results, "secrets");
+    return;
+  }
+  for (const item of items) {
+    const card = document.createElement("article");
+    card.className = "card";
+    card.dataset.entry = item.id;
+    const title = document.createElement("h3");
+    title.textContent = item.name;
+    card.appendChild(title);
+    if (item.confirmed === false) {
+      const warning = document.createElement("p");
+      warning.className = "unconfirmed";
+      warning.textContent = "Not confirmed. This is a warning, not a place to ride to.";
+      card.appendChild(warning);
+    }
+    addField(card, "Where", item.where);
+    addSteps(card, item.steps);
+    addField(card, "Requirements", item.requirements);
+    addField(card, "Reward", item.reward);
+    if (item.uncertain) addField(card, "Check this", item.uncertain);
+    if (item.pinAccuracy === "regional") addField(card, "Map pin", "Regional only. It puts you in the right part of the schematic, not on a surveyed door.");
+    const actions = document.createElement("div");
+    actions.className = "card-actions";
+    const marker = (item.markers || []).find(pin => Number.isFinite(pin.x));
+    if (marker) actions.appendChild(actionButton("ghost compact", "Show on map", () => showOnMap(marker.id)));
+    if (item.hiddenId) actions.appendChild(actionButton("ghost compact", "Open hidden place", () => openEntry("hidden", item.hiddenId)));
+    if (actions.childElementCount) card.appendChild(actions);
+    results.appendChild(card);
+  }
+}
+
+function hiddenItems() {
+  return state.hiddenPlaces.filter(item => modeMatches(item) && (state.hiddenCategory === "All" || item.category === state.hiddenCategory));
+}
+
+function renderHiddenTags() {
+  const row = $("#hiddenTags");
+  if (!row) return;
+  const categories = ["All", "Cave", "Waterfall", "Mine", "Underground", "Mountain"];
+  if (!categories.includes(state.hiddenCategory)) state.hiddenCategory = "All";
+  row.replaceChildren();
+  for (const category of categories) {
+    const button = document.createElement("button");
+    button.className = `tag${state.hiddenCategory === category ? " active" : ""}`;
+    button.textContent = category;
+    button.onclick = () => {
+      state.hiddenCategory = category;
+      state.selectedHiddenId = null;
+      renderHiddenTags();
+      renderHiddenMap();
+      renderHiddenList();
+      $("#hiddenDetail").replaceChildren();
+      const title = document.createElement("h3");
+      title.textContent = "Select a hidden place";
+      const body = document.createElement("p");
+      body.textContent = "Tap a marker or a name in the list.";
+      $("#hiddenDetail").append(title, body);
+    };
+    row.appendChild(button);
+  }
+}
+
+function showHiddenDetail(item) {
+  state.selectedHiddenId = item.id;
+  renderHiddenMap();
+  const detail = $("#hiddenDetail");
+  detail.replaceChildren();
+  const title = document.createElement("h3");
+  title.textContent = item.name;
+  detail.appendChild(title);
+  addField(detail, "Region", `${item.region}. ${item.landmark}.`);
+  addField(detail, "How to enter", item.enter);
+  addField(detail, "What's there", item.contents);
+  highlightEntry(item.id);
+}
+
+function renderHiddenMap() {
+  const layer = $("#hiddenMarkers");
+  if (!layer) return;
+  layer.replaceChildren();
+  for (const item of hiddenItems()) {
+    const marker = document.createElement("button");
+    marker.className = `map-marker ${String(item.category || "").toLowerCase()}${state.selectedHiddenId === item.id ? " active" : ""}`;
+    marker.style.left = `${item.x}%`;
+    marker.style.top = `${item.y}%`;
+    marker.title = item.name;
+    marker.setAttribute("aria-label", item.name);
+    const label = document.createElement("span");
+    label.textContent = item.category === "Waterfall" ? "W" : item.category.slice(0, 1);
+    marker.appendChild(label);
+    marker.onclick = () => showHiddenDetail(item);
+    layer.appendChild(marker);
+  }
+}
+
+function renderHiddenList() {
+  const list = $("#hiddenList");
+  if (!list) return;
+  list.replaceChildren();
+  const items = hiddenItems();
+  if (!items.length) {
+    storyEmpty(list, "hidden places");
+    return;
+  }
+  for (const item of items) {
+    const card = document.createElement("article");
+    card.className = `card${state.selectedHiddenId === item.id ? " highlight" : ""}`;
+    card.dataset.entry = item.id;
+    const title = document.createElement("h3");
+    title.textContent = item.name;
+    card.appendChild(title);
+    addField(card, "Category", item.category);
+    addField(card, "Region", `${item.region}. ${item.landmark}.`);
+    addField(card, "How to enter", item.enter);
+    addField(card, "What's there", item.contents);
+    card.appendChild(actionButton("ghost compact", "Show on this map", () => showHiddenDetail(item)));
+    list.appendChild(card);
+  }
+}
+
+async function loadFieldContent() {
+  const [legendaries, animals, secrets, hiddenPlaces] = await Promise.all([
+    loadJson("content/legendaries.json"),
+    loadJson("content/animals.json"),
+    loadJson("content/secrets.json"),
+    loadJson("content/hidden-places.json")
+  ]);
+  state.legendaries = legendaries;
+  state.animals = animals;
+  state.secrets = secrets;
+  state.hiddenPlaces = hiddenPlaces;
+  rebuildMap();
+  renderLegendaries();
+  renderAnimalFilters();
+  renderAnimals();
+  renderSecrets();
+  renderHiddenTags();
+  renderHiddenMap();
+  renderHiddenList();
+}
+
 async function loadGuide() {
   try {
     const response = await fetch("content/guide.json");
@@ -462,6 +985,9 @@ function renderGuide() {
 }
 
 $("#guideSearch").addEventListener("input", renderGuide);
+$("#legendarySearch")?.addEventListener("input", renderLegendaries);
+$("#animalSearch")?.addEventListener("input", renderAnimals);
+$("#secretSearch")?.addEventListener("input", renderSecrets);
 
 function attachImage(dataUrl) {
   if (!String(dataUrl || "").startsWith("data:image")) return;
@@ -660,13 +1186,55 @@ $("#analyzeScreenFrame").onclick = async () => {
   await askQuestion("Analyze my latest game screen and talk me through the next action. Read any visible objective or map marker and keep the answer short enough to follow while playing.", { fromVoice: true });
 };
 
-async function loadMap() {
+async function loadJson(path) {
   try {
-    const response = await fetch("content/map.json");
-    state.mapLocations = await response.json();
+    const response = await fetch(path);
+    if (!response.ok) throw new Error(path);
+    return await response.json();
   } catch {
-    state.mapLocations = [];
+    return [];
   }
+}
+
+async function loadMap() {
+  state.baseMap = await loadJson("content/map.json");
+  rebuildMap();
+}
+
+function rebuildMap() {
+  const legendaryMarkers = state.legendaries
+    .filter(item => Number.isFinite(item.x) && Number.isFinite(item.y))
+    .map(item => ({
+      id: `leg-${item.id}`,
+      category: "Legendary",
+      mode: item.mode,
+      title: item.name,
+      region: item.region,
+      x: item.x,
+      y: item.y,
+      directions: `${item.landmark}. ${item.conditions}`,
+      note: item.unlock,
+      linkView: "legendary",
+      linkId: item.id,
+      linkLabel: "Open animal page"
+    }));
+  const secretMarkers = state.secrets.flatMap(item => (item.markers || [])
+    .filter(marker => Number.isFinite(marker.x) && Number.isFinite(marker.y))
+    .map(marker => ({
+      id: marker.id,
+      category: "Secrets",
+      mode: item.mode,
+      title: marker.title,
+      region: marker.region,
+      x: marker.x,
+      y: marker.y,
+      directions: marker.directions,
+      note: marker.note,
+      linkView: "secrets",
+      linkId: item.id,
+      linkLabel: "Open secret"
+    })));
+  state.mapLocations = [...state.baseMap, ...legendaryMarkers, ...secretMarkers];
   renderMapTags();
   renderMap();
 }
@@ -703,12 +1271,16 @@ function showMapDetail(item) {
   actions.className = "map-actions";
   const ask = document.createElement("button");
   ask.className = "send compact";
+  ask.type = "button";
   ask.textContent = "Speak full directions";
   ask.onclick = () => {
     setView("voice");
     askQuestion(`Give me spoken step-by-step directions and all requirements for ${item.title} in ${item.region}. My selected mode is ${state.mode}. Correct me if this location does not apply to my mode.`, { fromVoice: true });
   };
   actions.appendChild(ask);
+  if (item.linkView && item.linkId) {
+    actions.appendChild(actionButton("ghost compact", item.linkLabel || "Open guide entry", () => openEntry(item.linkView, item.linkId)));
+  }
   detail.append(title, body, actions);
 }
 
@@ -720,13 +1292,14 @@ function renderMap() {
   $("#mapMarkers").replaceChildren();
   items.forEach((item, index) => {
     const marker = document.createElement("button");
-    marker.className = `map-marker${state.selectedMapId === item.id ? " active" : ""}`;
+    const kind = item.category === "Legendary" ? " legendary" : item.category === "Secrets" ? " secret" : "";
+    marker.className = `map-marker${kind}${state.selectedMapId === item.id ? " active" : ""}`;
     marker.style.left = `${item.x}%`;
     marker.style.top = `${item.y}%`;
     marker.title = item.title;
     marker.setAttribute("aria-label", item.title);
     const label = document.createElement("span");
-    label.textContent = String(index + 1);
+    label.textContent = item.category === "Legendary" ? "★" : item.category === "Secrets" ? "◆" : String(index + 1);
     marker.appendChild(label);
     marker.onclick = () => showMapDetail(item);
     $("#mapMarkers").appendChild(marker);
@@ -853,4 +1426,7 @@ if ("serviceWorker" in navigator && window.location.hostname !== "appassets.andr
 
 loadGuide();
 loadMap();
+loadFieldContent();
 checkStatus();
+window.speechSynthesis?.getVoices?.();
+window.speechSynthesis?.addEventListener?.("voiceschanged", () => {});
