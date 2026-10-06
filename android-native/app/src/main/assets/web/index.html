@@ -35,7 +35,7 @@
         <div class="hero-content">
           <div class="hero-kicker"><span class="kicker-line"></span><p class="eyebrow">FIELD COMPANION</p></div>
           <h1>Ride prepared.<br/><em>Know every trail.</em></h1>
-          <p class="sub">Instant walkthrough help, hidden discoveries, hunting advice, map guidance, live updates, camera vision, and Android screen capture — built for Story Mode and Online.</p>
+          <p class="sub">Instant walkthrough help, legendary hunts, perfect-pelt weapons, secrets, hidden caves, map guidance, a conversational guide that remembers the chat, camera vision, and Android screen capture — built for Story Mode and Online.</p>
 
           <div class="hero-trust">
             <span><b>24/7</b> guide access</span>
@@ -77,7 +77,27 @@
         </button>
         <button class="quick" data-view="map">
           <span class="quick-icon">⌖</span>
-          <div><b>Field Map</b><small>Gold, treasure, valuables &amp; key services</small></div>
+          <div><b>Field Map</b><small>Gold, treasure, legendaries, secrets &amp; services</small></div>
+          <span class="quick-arrow">›</span>
+        </button>
+        <button class="quick" data-view="legendary">
+          <span class="quick-icon">★</span>
+          <div><b>Legendary Animals</b><small>All 16 Story Mode hunts, trinkets, and pins</small></div>
+          <span class="quick-arrow">›</span>
+        </button>
+        <button class="quick" data-view="animals">
+          <span class="quick-icon">◈</span>
+          <div><b>Animals &amp; Weapons</b><small>Perfect-pelt guns, ammo, and fishing bait</small></div>
+          <span class="quick-arrow">›</span>
+        </button>
+        <button class="quick" data-view="secrets">
+          <span class="quick-icon">✦</span>
+          <div><b>Secrets</b><small>Mysteries, easter eggs, and what they pay</small></div>
+          <span class="quick-arrow">›</span>
+        </button>
+        <button class="quick" data-view="hidden">
+          <span class="quick-icon">▣</span>
+          <div><b>Hidden Places</b><small>Caves, waterfalls, mines, and hard climbs</small></div>
           <span class="quick-arrow">›</span>
         </button>
         <button class="quick" data-view="updates">
@@ -103,7 +123,7 @@
           <button id="handsFreeBtn" class="ghost">Hands-Free: Off</button>
           <label class="toggle"><input id="autoSpeak" type="checkbox" checked/><span class="toggle-ui"></span><span>Read every answer aloud</span></label>
         </div>
-        <div class="notice voice-notice"><span>●</span><p>Hands-Free mode listens again only after Frontier finishes speaking, so its own voice will not trigger another question. Tap Stop at any time.</p></div>
+        <div class="notice voice-notice"><span>●</span><p>Frontier remembers this conversation and answers out loud. When the server voice has capacity, you hear a deep warm male voice. If that service is out of quota, the phone uses its deepest male voice instead. Hands-Free listens again only after the answer finishes. Tap Stop at any time.</p></div>
       </section>
 
       <section id="askView" class="view active panel content-panel">
@@ -114,7 +134,7 @@
         <div id="chat" class="chat" aria-live="polite">
           <div class="message assistant welcome-message">
             <div class="message-avatar">FG</div>
-            <div><b>Frontier Guide</b><p>Show me where you are or tell me what you’re trying to do. I’ll break down the fastest next steps.</p></div>
+            <div><b>Frontier Guide</b><p>Ask straight. I’ll remember the trail we were just on, and I’ll say when a detail is only in the bundled pages.</p></div>
           </div>
         </div>
         <div id="imagePreviewWrap" class="image-preview hidden"><img id="imagePreview" alt="captured game view"/><button id="removeImage" aria-label="Remove attached image">×</button></div>
@@ -133,8 +153,8 @@
       </section>
 
       <section id="mapView" class="view panel content-panel">
-        <div class="section-head"><div><p class="eyebrow">FRONTIER FIELD MAP</p><h2>Treasure &amp; valuables</h2><p class="section-sub">A built-in regional guide for high-value finds and important services.</p></div></div>
-        <div class="notice"><span>●</span><p>This is an original schematic companion map, not a one-to-one copy of Rockstar’s game map. Tap a marker for directions, requirements, mode restrictions, and a spoken route.</p></div>
+        <div class="section-head"><div><p class="eyebrow">FRONTIER FIELD MAP</p><h2>Treasure &amp; field pins</h2><p class="section-sub">Gold, services, legendary animals, and secrets on one schematic.</p></div></div>
+        <div class="notice"><span>●</span><p>This is an original schematic companion map, not a one-to-one copy of Rockstar’s game map. Legendary pins use a star. Secret pins use a diamond. Tap a marker for directions and, when it has one, the guide page.</p></div>
         <div id="mapTags" class="tags"></div>
         <div class="field-map" id="fieldMap" role="img" aria-label="Schematic Red Dead Redemption 2 regions and guide markers">
           <div class="map-region region-west">NEW<br/>AUSTIN</div>
@@ -144,7 +164,47 @@
           <div class="map-region region-south">LEMOYNE</div>
           <div id="mapMarkers" class="map-markers"></div>
         </div>
-        <article id="mapDetail" class="card map-detail"><h3>Select a marker</h3><p>Choose Gold, Treasure, Money, Valuables, or Services above, then tap a numbered marker.</p></article>
+        <article id="mapDetail" class="card map-detail"><h3>Select a marker</h3><p>Choose a layer above, then tap a marker. Legendary and Secrets are their own layers.</p></article>
+      </section>
+
+      <section id="legendaryView" class="view panel content-panel">
+        <div class="section-head"><div><p class="eyebrow">STORY MODE HUNTS</p><h2>Legendary Animals</h2><p class="section-sub">All 16 Story Mode legendary animals. Pelt quality does not matter. Online’s Harriet and Gus maps are a different list.</p></div></div>
+        <div class="search-wrap"><span>⌕</span><input id="legendarySearch" class="searchbox" placeholder="Search animal, region, or trinket" /></div>
+        <p id="legendaryCount" class="count-line"></p>
+        <div id="legendaryResults" class="cards"></div>
+      </section>
+
+      <section id="animalsView" class="view panel content-panel">
+        <div class="section-head"><div><p class="eyebrow">PERFECT KILLS</p><h2>Animals &amp; Weapons</h2><p class="section-sub">The weapon and ammo for a 3-star kill, or the bait for a fish. The in-game compendium still wins if a card and the compendium ever disagree.</p></div></div>
+        <div class="notice"><span>●</span><p>Use a 3-star animal and a clean fatal hit. The Buck Antler Trinket can save a slightly damaged 3-star pelt. Legendary animal pelts are not graded. Fish bait is sold in Lagras after A Fisher of Men. Legendary fish need the special lures from that shop after you start A Fisher of Fish.</p></div>
+        <div class="search-wrap"><span>⌕</span><input id="animalSearch" class="searchbox" placeholder="Search animal, weapon, or bait" /></div>
+        <div id="animalSizeTags" class="tags"></div>
+        <div id="animalRegionTags" class="tags"></div>
+        <p id="animalCount" class="count-line"></p>
+        <div id="animalResults" class="cards"></div>
+      </section>
+
+      <section id="secretsView" class="view panel content-panel">
+        <div class="section-head"><div><p class="eyebrow">OFF THE ROAD</p><h2>Secrets</h2><p class="section-sub">Mysteries and easter eggs with the steps, the requirements, and the reward. Unconfirmed names stay labeled.</p></div></div>
+        <div class="search-wrap"><span>⌕</span><input id="secretSearch" class="searchbox" placeholder="Search a secret, town, or reward" /></div>
+        <p id="secretCount" class="count-line"></p>
+        <div id="secretResults" class="cards"></div>
+      </section>
+
+      <section id="hiddenView" class="view panel content-panel">
+        <div class="section-head"><div><p class="eyebrow">OFF THE ROAD</p><h2>Hidden Places</h2><p class="section-sub">A second copy of the field map, only for caves, waterfalls, mines, cellars, and hard mountain spots.</p></div></div>
+        <div class="notice"><span>●</span><p>Same schematic as the Field Map, not Rockstar’s map. Each category has its own filter. The list under the map matches the pins.</p></div>
+        <div id="hiddenTags" class="tags"></div>
+        <div class="field-map" id="hiddenMap" role="img" aria-label="Schematic map of hidden caves, mines, and mountain spots">
+          <div class="map-region region-west">NEW<br/>AUSTIN</div>
+          <div class="map-region region-plains">WEST<br/>ELIZABETH</div>
+          <div class="map-region region-heartlands">NEW<br/>HANOVER</div>
+          <div class="map-region region-north">AMBARINO</div>
+          <div class="map-region region-south">LEMOYNE</div>
+          <div id="hiddenMarkers" class="map-markers"></div>
+        </div>
+        <article id="hiddenDetail" class="card map-detail"><h3>Select a hidden place</h3><p>Choose Cave, Waterfall, Mine, Underground, or Mountain, then tap a marker or a name in the list.</p></article>
+        <div id="hiddenList" class="cards hidden-list"></div>
       </section>
 
       <section id="guideView" class="view panel content-panel">
@@ -170,7 +230,7 @@
           <div class="settings-actions"><button id="saveSettings" class="send">Save &amp; test connection</button><button id="checkUpdates" class="ghost">Check guide update</button></div>
           <div id="settingsMsg" class="muted settings-msg"></div>
         </div>
-        <div class="privacy-card"><span>◈</span><div><b>Privacy first</b><p>Camera and screen images are only sent when you ask a question with an image attached. Android asks for screen-capture permission each session.</p></div></div>
+        <div class="privacy-card"><span>◈</span><div><b>Privacy first</b><p>Camera and screen images are only sent when you ask a question with an image attached. Spoken answers use the server voice when it has capacity; the API key stays on the server. Android asks for screen-capture permission each session.</p></div></div>
       </section>
     </main>
 

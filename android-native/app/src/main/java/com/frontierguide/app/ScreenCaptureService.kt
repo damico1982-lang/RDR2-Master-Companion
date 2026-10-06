@@ -62,12 +62,21 @@ class ScreenCaptureService : Service() {
 
         stopCaptureOnly()
         val mgr = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        projection = mgr.getMediaProjection(code, data)
+        try {
+            projection = mgr.getMediaProjection(code, data)
+        } catch (_: Exception) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        if (projection == null) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
         projection?.registerCallback(projectionCallback, mainHandler)
 
         val dm = resources.displayMetrics
         val width = 720
-        val height = (width * dm.heightPixels.toFloat() / dm.widthPixels.toFloat()).toInt().coerceAtLeast(480)
+        val height = (width * dm.heightPixels.toFloat() / dm.widthPixels.coerceAtLeast(1).toFloat()).toInt().coerceAtLeast(480)
         reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
         display = projection?.createVirtualDisplay(
             "FrontierGuideCapture",
@@ -81,28 +90,31 @@ class ScreenCaptureService : Service() {
         )
 
         reader?.setOnImageAvailableListener({ r ->
-            if (System.currentTimeMillis() - lastWrite < 1400) {
-                r.acquireLatestImage()?.close()
-                return@setOnImageAvailableListener
-            }
-            val image = r.acquireLatestImage() ?: return@setOnImageAvailableListener
+            var image: android.media.Image? = null
             try {
-                val plane = image.planes[0]
-                val buf = plane.buffer
-                val pixelStride = plane.pixelStride
-                val rowStride = plane.rowStride
-                val rowPadding = rowStride - pixelStride * width
-                val bmp = Bitmap.createBitmap(width + rowPadding / pixelStride, height, Bitmap.Config.ARGB_8888)
-                bmp.copyPixelsFromBuffer(buf)
-                val cropped = Bitmap.createBitmap(bmp, 0, 0, width, height)
+                if (System.currentTimeMillis() - lastWrite < 1400) {
+                    r.acquireLatestImage()?.close()
+                    return@setOnImageAvailableListener
+                }
+                val frame = r.acquireLatestImage() ?: return@setOnImageAvailableListener
+                image = frame
+                val plane = frame.planes[0]
+                val pixelStride = plane.pixelStride.coerceAtLeast(1)
+                val rowPadding = plane.rowStride - pixelStride * width
+                val bitmapWidth = width + (rowPadding / pixelStride).coerceAtLeast(0)
+                val bmp = Bitmap.createBitmap(bitmapWidth, height, Bitmap.Config.ARGB_8888)
+                bmp.copyPixelsFromBuffer(plane.buffer)
+                val cropped = if (bitmapWidth == width) bmp else Bitmap.createBitmap(bmp, 0, 0, width, height)
                 FileOutputStream(File(cacheDir, "latest_screen.jpg")).use {
                     cropped.compress(Bitmap.CompressFormat.JPEG, 84, it)
                 }
+                if (cropped !== bmp) cropped.recycle()
                 bmp.recycle()
-                cropped.recycle()
                 lastWrite = System.currentTimeMillis()
+            } catch (_: Exception) {
+                // A bad frame must not take down the process.
             } finally {
-                image.close()
+                image?.close()
             }
         }, mainHandler)
         return START_NOT_STICKY

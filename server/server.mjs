@@ -2,22 +2,31 @@ import { timingSafeEqual } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import cors from "cors";
 import express from "express";
+import { loadFieldNotes, relevantNotes } from "./field-notes.mjs";
 
 const DEFAULT_MODEL = "gpt-6-luna";
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
-const APP_VERSION = "1.3.0";
+const DEFAULT_TTS_MODEL = "gpt-4o-mini-tts";
+const DEFAULT_TTS_VOICE = "onyx";
+const DEFAULT_TTS_INSTRUCTIONS = "Speak as a deep, warm Black man in his thirties or forties. Low chest voice, unhurried, dry humor, direct. Sound like someone talking across a campfire, not an announcer, not a cartoon, and not a whisper.";
+const APP_VERSION = "1.4.0";
 const PUBLIC_DIR = fileURLToPath(new URL("./public/", import.meta.url));
 const PUBLIC_INDEX = fileURLToPath(new URL("./public/index.html", import.meta.url));
 
-const SYSTEM = `You are Frontier Guide, a hands-free expert companion for Red Dead Redemption 2 Story Mode and Red Dead Online.
+const SYSTEM = `You are Frontier Guide, the in-app companion for Red Dead Redemption 2 and Red Dead Online.
+Talk like a sharp trail partner: conversational, direct, and a little wry. No corporate tone, no filler, and no catchphrase spam. Personality is welcome. Made-up game facts are not.
+You remember this conversation. A follow-up such as "then what?", "that one", or "the other gun" refers to what you and the player just said. Use the earlier turns. Do not ask them to repeat a location they already gave you.
+Lead with the next thing to do. Keep answers easy to hear out loud, in short steps, because the player may be riding.
+Bundled field notes arrive with the question when something on file matches. Prefer those notes for legendary animals, perfect-pelt weapons, bait, secrets, and hidden places. If a note says a detail is unconfirmed or that two guides conflict, say that in plain words. Do not pick a side the note refused to pick. If the notes do not cover the question, answer from general RDR2 knowledge and say you are past the bundled pages.
 Help with missions, maps, treasure chains, gold, cash, jewelry, collectibles, role progression, hunting, fishing, crafting, horses, weapons, challenges, achievements, secrets, hidden interiors, encounter conditions, puzzles, and efficient routes.
-Give practical, spoiler-aware help unless the player explicitly asks for spoilers. Lead with the immediate next action and use short spoken-friendly steps because the player may be listening while playing.
+Give practical, spoiler-aware help unless the player explicitly asks for spoilers.
 When an image is attached, identify visible HUD text, map markers, landmarks, mission state, inventory, and relevant hazards before explaining exactly what to do next. If the image is unclear, say what cannot be confirmed and request the specific view needed.
 Always distinguish Story Mode from Red Dead Online. Do not claim Story Mode gold-bar spawns, cheat codes, or encounters work Online. If asked for diamonds or another item that is not a normal obtainable item in the selected mode, say so and name the closest real valuables instead.
-Treat “cheats” as built-in cheat codes, legitimate strategies, and secrets. Never recommend hacks, mod menus, account theft, duplication abuse, or ban-risk exploits in Online.
-Never invent a mission, item, patch, event, location, payout, spawn cycle, or mechanic. Mention prerequisites, chapter or role requirements, platform/version differences, randomized spawns, and limited-time availability when they change the answer.
-For live/current questions, prefer official Rockstar sources for patches, events, and service changes. Clearly label community maps, spawn-cycle tools, bugs, and workarounds as third-party or unverified when applicable.
-Keep answers conversational and remember the recent call-and-response context so follow-up questions such as “then what?” make sense.`;
+Treat "cheats" as built-in cheat codes, legitimate strategies, and secrets. Never recommend hacks, mod menus, account theft, duplication abuse, or ban-risk exploits in Online.
+Never invent a mission, item, patch, event, location, payout, spawn cycle, clock time, or mechanic. Mention prerequisites, chapter or role requirements, platform/version differences, randomized spawns, and limited-time availability when they change the answer.
+For live or current questions, prefer official Rockstar sources for patches, events, and service changes. Clearly label community maps, spawn-cycle tools, bugs, and workarounds as third-party or unverified when applicable.
+Do not write in dialect and do not describe an accent. The spoken voice is handled separately.
+The schematic map in the app is not Rockstar's map. Give landmark directions, not a claim that a pin is a surveyed coordinate.`;
 
 function positiveInteger(value, fallback) {
   const parsed = Number.parseInt(value, 10);
@@ -49,6 +58,16 @@ function extractText(response) {
   return parts.join("\n").trim() || "No answer returned.";
 }
 
+function clientSafeAiError(status) {
+  if (status === 429) {
+    return "The AI service is temporarily out of capacity. Wait a bit and try again. Offline guide answers still work.";
+  }
+  if (status === 401 || status === 403) {
+    return "The AI service rejected the server credentials. Check OPENAI_API_KEY on the host.";
+  }
+  return "The AI service could not answer that request. Try again shortly.";
+}
+
 function extractSources(response) {
   const seen = new Set();
   const sources = [];
@@ -66,9 +85,12 @@ function extractSources(response) {
   return sources.slice(0, 8);
 }
 
-export function createApp({ env = process.env, fetchImpl = globalThis.fetch, logger = console } = {}) {
+export function createApp({ env = process.env, fetchImpl = globalThis.fetch, logger = console, fieldNotes = null } = {}) {
   const apiKey = String(env.OPENAI_API_KEY || "").trim();
   const model = String(env.OPENAI_MODEL || DEFAULT_MODEL).trim();
+  const ttsModel = String(env.OPENAI_TTS_MODEL || DEFAULT_TTS_MODEL).trim();
+  const ttsVoice = String(env.OPENAI_TTS_VOICE || DEFAULT_TTS_VOICE).trim();
+  const ttsInstructions = String(env.OPENAI_TTS_INSTRUCTIONS || DEFAULT_TTS_INSTRUCTIONS).trim();
   const clientToken = String(env.FRONTIER_CLIENT_TOKEN || "").trim();
   const openaiBaseUrl = String(env.OPENAI_BASE_URL || DEFAULT_OPENAI_BASE_URL).replace(/\/+$/, "");
   const requestTimeoutMs = positiveInteger(env.OPENAI_TIMEOUT_MS, 90_000);
@@ -78,6 +100,16 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
     .split(",")
     .map(value => value.trim())
     .filter(Boolean);
+
+  let notes = fieldNotes;
+  if (!notes) {
+    try {
+      notes = loadFieldNotes();
+    } catch (error) {
+      logger.error(error);
+      notes = { guide: [], legendaries: [], animals: [], secrets: [], hidden: [] };
+    }
+  }
 
   const app = express();
   app.disable("x-powered-by");
@@ -133,7 +165,12 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
       model,
       authRequired: Boolean(clientToken),
       authorized: clientAuthorized(req),
-      version: APP_VERSION
+      version: APP_VERSION,
+      tts: {
+        enabled: Boolean(apiKey),
+        model: ttsModel,
+        voice: ttsVoice
+      }
     });
   });
 
@@ -166,27 +203,25 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
     return next();
   }
 
-  async function createResponse({ question, mode = "story", imageDataUrl, history = [], live = false, purpose = "ask" }) {
-    if (!apiKey) {
-      const error = new Error("OPENAI_API_KEY is not configured on the server.");
-      error.status = 503;
-      throw error;
-    }
+  function normalizeHistory(history) {
+    return Array.isArray(history)
+      ? history
+        .filter(item => item && ["user", "assistant"].includes(item.role) && typeof item.content === "string")
+        .map(item => ({ role: item.role, content: item.content.trim().slice(0, 2_000) }))
+        .filter(item => item.content)
+        .slice(-12)
+      : [];
+  }
 
-    const modeLabel = mode === "online"
-      ? "Red Dead Online"
-      : mode === "either"
-        ? "Story Mode or Online"
-        : "Story Mode";
-    const recentContext = history
-      .slice(-8)
-      .map(item => `${item.role === "assistant" ? "Frontier" : "Player"}: ${item.content}`)
-      .join("\n");
+  function responseBody({ question, mode = "story", imageDataUrl, history = [], live = false, purpose = "ask", stream = false }) {
+    const notesText = purpose === "updates"
+      ? ""
+      : relevantNotes(notes, { question, history, mode });
     const content = [{
       type: "input_text",
       text: purpose === "updates"
         ? "Give me a concise current update scan for Red Dead Redemption 2 and Red Dead Online as of today. Cover official Rockstar announcements, patches, event changes, and service changes first. Then cover major actively reported issues or useful workarounds. Separate confirmed information from community reports and include dates when available."
-        : `Player mode: ${modeLabel}.${recentContext ? `\nRecent call-and-response context:\n${recentContext}` : ""}\nCurrent player question: ${question}`
+        : `${notesText}\n\nCurrent player question: ${question}`
     }];
 
     if (imageDataUrl) {
@@ -196,23 +231,35 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
     const body = {
       model,
       instructions: SYSTEM,
-      input: [{ role: "user", content }],
+      input: [
+        ...history.map(item => ({ role: item.role, content: item.content })),
+        { role: "user", content }
+      ],
       max_output_tokens: purpose === "updates" ? 1_200 : 1_000,
       store: false
     };
 
     if (live) body.tools = [{ type: "web_search", search_context_size: "medium" }];
+    if (stream) body.stream = true;
+    return body;
+  }
 
-    let response;
+  async function postOpenAI(path, body, timeoutMs = requestTimeoutMs) {
+    if (!apiKey) {
+      const error = new Error("OPENAI_API_KEY is not configured on the server.");
+      error.status = 503;
+      throw error;
+    }
+
     try {
-      response = await fetchImpl(`${openaiBaseUrl}/responses`, {
+      return await fetchImpl(`${openaiBaseUrl}${path}`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(requestTimeoutMs)
+        signal: AbortSignal.timeout(timeoutMs)
       });
     } catch (cause) {
       const timedOut = cause?.name === "TimeoutError" || cause?.name === "AbortError";
@@ -221,14 +268,86 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
       error.cause = cause;
       throw error;
     }
+  }
 
+  async function rejectUpstream(response) {
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const error = new Error(data?.error?.message || `AI request failed with status ${response.status}.`);
-      error.status = response.status === 429 ? 429 : 502;
-      throw error;
+    const providerMessage = typeof data?.error?.message === "string" ? data.error.message : "";
+    const safeLog = /api key|sk-|bearer /i.test(providerMessage)
+      ? "provider rejected the credentials"
+      : providerMessage.slice(0, 300);
+    logger.error(`OpenAI request failed with status ${response.status}: ${safeLog}`);
+    const error = new Error(clientSafeAiError(response.status));
+    error.status = response.status === 429 ? 429 : 502;
+    throw error;
+  }
+
+  function writeSse(res, payload) {
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  }
+
+  async function streamResponse(upstream, res) {
+    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Accel-Buffering", "no");
+
+    const reader = upstream.body?.getReader?.();
+    if (!reader) {
+      const data = await upstream.json().catch(() => ({}));
+      const answer = extractText(data);
+      writeSse(res, { type: "delta", text: answer });
+      writeSse(res, { type: "done", answer, sources: extractSources(data), model });
+      res.end();
+      return;
     }
 
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let answer = "";
+    let completed = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop() || "";
+      for (const part of parts) {
+        const dataLine = part
+          .split("\n")
+          .filter(line => line.startsWith("data:"))
+          .map(line => line.slice(5).trim())
+          .join("");
+        if (!dataLine || dataLine === "[DONE]") continue;
+        let event;
+        try {
+          event = JSON.parse(dataLine);
+        } catch {
+          continue;
+        }
+        if (event.type === "response.output_text.delta" && event.delta) {
+          answer += event.delta;
+          writeSse(res, { type: "delta", text: event.delta });
+        } else if (event.type === "response.completed" && event.response) {
+          completed = event.response;
+        }
+      }
+    }
+
+    const finalAnswer = (completed ? extractText(completed) : answer) || answer || "No answer returned.";
+    writeSse(res, {
+      type: "done",
+      answer: finalAnswer,
+      sources: completed ? extractSources(completed) : [],
+      model
+    });
+    res.end();
+  }
+
+  async function createResponse({ question, mode = "story", imageDataUrl, history = [], live = false, purpose = "ask" }) {
+    const response = await postOpenAI("/responses", responseBody({ question, mode, imageDataUrl, history, live, purpose }));
+    if (!response.ok) await rejectUpstream(response);
+    const data = await response.json().catch(() => ({}));
     return {
       answer: extractText(data),
       sources: extractSources(data),
@@ -240,21 +359,51 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
     const question = String(req.body?.question || "").trim();
     const mode = ["story", "online", "either"].includes(req.body?.mode) ? req.body.mode : "story";
     const imageDataUrl = req.body?.imageDataUrl || null;
-    const history = Array.isArray(req.body?.history)
-      ? req.body.history
-        .filter(item => item && ["user", "assistant"].includes(item.role) && typeof item.content === "string")
-        .map(item => ({ role: item.role, content: item.content.trim().slice(0, 2_000) }))
-        .filter(item => item.content)
-        .slice(-8)
-      : [];
+    const history = normalizeHistory(req.body?.history);
     const live = req.body?.live === true;
+    const stream = req.body?.stream === true;
 
     if (!question) return res.status(400).json({ error: "Question is required." });
     if (question.length > 4_000) return res.status(400).json({ error: "Question is too long." });
     if (!validImageDataUrl(imageDataUrl)) return res.status(400).json({ error: "Unsupported or oversized image." });
 
     try {
-      return res.json(await createResponse({ question, mode, imageDataUrl, history, live }));
+      if (!stream) return res.json(await createResponse({ question, mode, imageDataUrl, history, live }));
+      const upstream = await postOpenAI("/responses", responseBody({ question, mode, imageDataUrl, history, live, stream: true }));
+      if (!upstream.ok) await rejectUpstream(upstream);
+      await streamResponse(upstream, res);
+      return undefined;
+    } catch (error) {
+      logger.error(error);
+      if (res.headersSent) {
+        writeSse(res, { type: "error", error: error.message || "The live guide stopped early." });
+        res.end();
+        return undefined;
+      }
+      return res.status(error.status || 500).json({ error: error.message || "Server error." });
+    }
+  });
+
+  app.post("/api/speak", rateLimit, requireClientToken, async (req, res) => {
+    const text = String(req.body?.text || "").replace(/\s+/g, " ").trim();
+    if (!text) return res.status(400).json({ error: "Text is required." });
+    if (text.length > 3_500) return res.status(400).json({ error: "Text is too long to speak." });
+
+    const speechBody = {
+      model: ttsModel,
+      voice: ttsVoice,
+      input: text,
+      response_format: "mp3"
+    };
+    if (ttsInstructions && /gpt-4o(?:-mini)?-tts/i.test(ttsModel)) speechBody.instructions = ttsInstructions;
+
+    try {
+      const upstream = await postOpenAI("/audio/speech", speechBody, Math.min(requestTimeoutMs, 60_000));
+      if (!upstream.ok) await rejectUpstream(upstream);
+      const audio = Buffer.from(await upstream.arrayBuffer());
+      res.setHeader("Content-Type", "audio/mpeg");
+      res.setHeader("Cache-Control", "no-store");
+      return res.send(audio);
     } catch (error) {
       logger.error(error);
       return res.status(error.status || 500).json({ error: error.message || "Server error." });
@@ -275,11 +424,18 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
       name: "Frontier Guide API",
       ok: true,
       version: APP_VERSION,
-      endpoints: ["/api/health", "/api/ask", "/api/live-update"]
+      endpoints: ["/api/health", "/api/ask", "/api/speak", "/api/live-update"]
     });
   });
 
-  app.use(express.static(PUBLIC_DIR, { index: false, maxAge: "1h" }));
+  app.use(express.static(PUBLIC_DIR, {
+    index: false,
+    etag: true,
+    setHeaders(res, filePath) {
+      const longLived = filePath.endsWith(".svg") || filePath.endsWith(".png");
+      res.setHeader("Cache-Control", longLived ? "public, max-age=86400" : "no-cache");
+    }
+  }));
   app.get("/", (req, res) => res.sendFile(PUBLIC_INDEX));
 
   app.use((req, res) => {

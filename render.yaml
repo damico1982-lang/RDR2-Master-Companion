@@ -24,6 +24,12 @@ services:
         value: 22.22.0
       - key: OPENAI_TIMEOUT_MS
         value: 90000
+      - key: OPENAI_TTS_MODEL
+        value: gpt-4o-mini-tts
+      - key: OPENAI_TTS_VOICE
+        value: onyx
+      - key: OPENAI_TTS_INSTRUCTIONS
+        value: Speak as a deep, warm Black man in his thirties or forties. Low chest voice, unhurried, dry humor, direct. Sound like someone talking across a campfire, not an announcer, not a cartoon, and not a whisper.
       - key: RATE_LIMIT_MAX
         value: 30
       - key: RATE_LIMIT_WINDOW_MS
