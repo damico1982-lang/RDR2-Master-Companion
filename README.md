@@ -1,10 +1,10 @@
 # RDR2 Master Companion
 
-Frontier Guide is an unofficial, phone-first companion for Red Dead Redemption 2 and Red Dead Online. Android v1.4.0 combines a conversational guide that remembers the chat, offline legendary animals, perfect-pelt weapons, secrets, and hidden places, a spoken server voice with a device fallback, photo uploads, front/rear camera coaching, Android screen capture, a built-in field map, and current web-update scans.
+Frontier Guide is an unofficial, phone-first companion for Red Dead Redemption 2 and Red Dead Online. Android v1.4.1 combines a conversational guide that remembers the chat, offline legendary animals, perfect-pelt weapons, secrets, and hidden places, a spoken server voice with a device fallback, photo uploads, front/rear camera coaching, Android screen capture, a built-in field map, and current web-update scans.
 
 The same themed interface is also served as an installable web app from the live Render URL. Open `https://frontier-guide-api.onrender.com` to use it in a mobile or desktop browser. First-party web and Android clients connect automatically; the shared access key remains available for CLI or other authorized clients. Browser camera and voice modes work over HTTPS; Android screen capture remains exclusive to the APK.
 
-Current release: Android and server **1.4.0**.
+Current release: Android and server **1.4.1**.
 
 The interface uses an original black, blood-red, parchment, and weathered-leather frontier theme. No Rockstar artwork or game assets are bundled.
 
@@ -70,7 +70,7 @@ If Render assigns a different public hostname, use the exact URL displayed on th
 
 ## Android connection settings
 
-Version 1.4.0 fills the hosted server URL automatically. Settings remain available for diagnostics or a custom deployment:
+Version 1.4.1 fills the hosted server URL automatically. Settings remain available for diagnostics or a custom deployment:
 
 | Android field | Value |
 |---|---|
@@ -133,6 +133,15 @@ The seven integration tests cover the public health probe, protected routes, aut
 
 ## Build Android APK
 
-Run the **Build Android APK** GitHub Actions workflow. The downloadable artifact is named `Frontier-Guide-debug-apk`.
+Run the **Build Android APK** GitHub Actions workflow. The downloadable artifact is named `Frontier-Guide-debug-apk`. The same workflow installs that APK in an Android emulator and checks that the main screens load without JavaScript errors.
+
+Debug APKs stay updatable only when CI signs them with one stable keystore. Add these GitHub Actions secrets, from a keystore you generate and keep outside the repo:
+
+- `ANDROID_KEYSTORE_BASE64` — base64 of the `.keystore` file, one line, no wrapping
+- `ANDROID_KEYSTORE_PASSWORD` — the keystore password
+- `ANDROID_KEY_ALIAS` — the key alias
+- `ANDROID_KEY_PASSWORD` — the key password (for a PKCS12 keystore this is the same as the keystore password)
+
+If any secret is missing, the workflow still builds and prints a warning. That APK is signed with a new random key, and Android then refuses to install it over the previous copy until the old app is uninstalled.
 
 The app requires HTTPS for remote backends. The OpenAI key always stays server-side.

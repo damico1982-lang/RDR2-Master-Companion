@@ -17,23 +17,79 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-      - name: Install Android SDK packages
-        shell: bash
-        run: |
-          SDKMANAGER="/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
-      - name: Build debug APK
-        run: gradle -p android-native assembleDebug --stacktrace
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Frontier-Guide-debug-apk
-          path: android-native/app/build/outputs/apk/debug/app-debug.apk
+    - uses: actions/checkout@v4
+    - uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: '17'
+    - name: Install Android SDK packages
+      shell: bash
+      run: |
+        SDKMANAGER="/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager"
+        yes | "$SDKMANAGER" --licenses >/dev/null || true
+        "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+    - uses: gradle/actions/setup-gradle@v4
+      with:
+        gradle-version: '8.9'
+    - name: Warn when the stable debug keystore is missing
+      env:
+        ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      shell: bash
+      run: |
+        missing=0
+        for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+          if [ -z "${!name}" ]; then
+            echo "::warning title=Unstable debug signature::$name is not set. The APK will be signed with a new random debug key and will not update over the previous install."
+            missing=1
+          fi
+        done
+        if [ "$missing" -eq 0 ]; then
+          echo "Stable debug keystore secrets are present."
+        fi
+    - name: Build debug APK
+      env:
+        ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      run: gradle -p android-native assembleDebug --stacktrace
+    - uses: actions/upload-artifact@v4
+      with:
+        name: Frontier-Guide-debug-apk
+        path: android-native/app/build/outputs/apk/debug/app-debug.apk
+
+  smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: '17'
+    - uses: actions/setup-node@v5
+      with:
+        node-version: '22'
+    - uses: actions/download-artifact@v4
+      with:
+        name: Frontier-Guide-debug-apk
+        path: apk
+    - name: Install the APK and check the main screens
+      uses: reactivecircus/android-emulator-runner@v2
+      with:
+        api-level: 34
+        target: google_apis
+        arch: x86_64
+        disable-animations: true
+        emulator-options: -no-window -no-snapshot -no-audio -no-boot-anim -gpu swiftshader_indirect
+        script: node android-native/scripts/emulator-smoke.mjs apk/app-debug.apk
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: emulator-screenshots
+        path: emulator-screenshots
+        if-no-files-found: ignore

@@ -1,3 +1,10 @@
+if (typeof Element !== "undefined" && !Element.prototype.replaceChildren) {
+  Element.prototype.replaceChildren = function (...nodes) {
+    while (this.firstChild) this.removeChild(this.firstChild);
+    if (nodes.length) this.append(...nodes);
+  };
+}
+
 const state = {
   mode: "story",
   image: null,
@@ -313,64 +320,79 @@ async function askQuestion(question, { fromVoice = false } = {}) {
   let answer = "";
   let sources = [];
   const paragraph = loading.querySelector("p");
+  const readAnswer = async response => {
+    const type = response.headers.get("content-type") || "";
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      const error = new Error(data.error || `Server returned ${response.status}.`);
+      error.status = response.status;
+      throw error;
+    }
+    if (!type.includes("text/event-stream") || !response.body?.getReader) {
+      const output = await response.json();
+      answer = output.answer || "No answer returned.";
+      sources = output.sources || [];
+      fillAnswer(paragraph, answer);
+      return;
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const chunks = buffer.split("\n\n");
+      buffer = chunks.pop() || "";
+      for (const chunk of chunks) {
+        const dataLine = chunk.split("\n").filter(line => line.startsWith("data:")).map(line => line.slice(5).trim()).join("");
+        if (!dataLine) continue;
+        const event = JSON.parse(dataLine);
+        if (event.type === "delta" && event.text) {
+          answer += event.text;
+          paragraph.textContent = answer;
+          $("#chat").scrollTop = $("#chat").scrollHeight;
+        } else if (event.type === "done") {
+          answer = event.answer || answer;
+          sources = event.sources || [];
+        } else if (event.type === "error") {
+          const error = new Error(event.error || "The live guide stopped early.");
+          error.partial = true;
+          throw error;
+        }
+      }
+    }
+    fillAnswer(paragraph, answer || "No answer returned.");
+  };
   try {
     if (!settings.api) {
       answer = localAnswer(cleanQuestion);
       fillAnswer(paragraph, answer);
     } else {
-      const response = await fetch(`${settings.api}/api/ask`, {
+      const payload = {
+        question: cleanQuestion,
+        mode: state.mode,
+        imageDataUrl: state.image,
+        live: $("#liveSearch").checked,
+        history: state.history.slice(0, -1)
+      };
+      const postAsk = (stream, signal) => fetch(`${settings.api}/api/ask`, {
         method: "POST",
         headers: serverHeaders(true),
-        body: JSON.stringify({
-          question: cleanQuestion,
-          mode: state.mode,
-          imageDataUrl: state.image,
-          live: $("#liveSearch").checked,
-          stream: true,
-          history: state.history.slice(0, -1)
-        })
+        body: JSON.stringify({ ...payload, stream }),
+        signal
       });
-      const type = response.headers.get("content-type") || "";
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        const error = new Error(data.error || `Server returned ${response.status}.`);
-        error.status = response.status;
-        throw error;
-      }
-      if (!type.includes("text/event-stream") || !response.body) {
-        const output = await response.json();
-        answer = output.answer || "No answer returned.";
-        sources = output.sources || [];
-        fillAnswer(paragraph, answer);
-      } else {
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const chunks = buffer.split("\n\n");
-          buffer = chunks.pop() || "";
-          for (const chunk of chunks) {
-            const dataLine = chunk.split("\n").filter(line => line.startsWith("data:")).map(line => line.slice(5).trim()).join("");
-            if (!dataLine) continue;
-            const event = JSON.parse(dataLine);
-            if (event.type === "delta" && event.text) {
-              answer += event.text;
-              paragraph.textContent = answer;
-              $("#chat").scrollTop = $("#chat").scrollHeight;
-            } else if (event.type === "done") {
-              answer = event.answer || answer;
-              sources = event.sources || [];
-            } else if (event.type === "error") {
-              const error = new Error(event.error || "The live guide stopped early.");
-              error.partial = true;
-              throw error;
-            }
-          }
-        }
-        fillAnswer(paragraph, answer || "No answer returned.");
+      const controller = new AbortController();
+      const timer = setTimeout(() => {
+        if (!answer) controller.abort();
+      }, 40000);
+      try {
+        await readAnswer(await postAsk(true, controller.signal));
+      } catch (error) {
+        if (answer) throw error;
+        await readAnswer(await postAsk(false));
+      } finally {
+        clearTimeout(timer);
       }
     }
   } catch (error) {
