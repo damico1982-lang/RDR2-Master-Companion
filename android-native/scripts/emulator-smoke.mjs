@@ -360,13 +360,22 @@ async function reconnectDevtools() {
 }
 
 async function sendRetry(method, params = {}, timeoutMs = 30000) {
-  try {
-    return await send(method, params, timeoutMs);
-  } catch (error) {
-    console.log(`devtools retry after ${error.message}`);
-    await reconnectDevtools();
-    return await send(method, params, timeoutMs);
+  let last = new Error(`DevTools ${method} failed`);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await send(method, params, timeoutMs);
+    } catch (error) {
+      last = error;
+      console.log(`devtools retry ${attempt + 1} after ${error.message}`);
+      try {
+        await reconnectDevtools();
+      } catch (reconnectError) {
+        console.log(`devtools reconnect failed: ${reconnectError.message}`);
+        await delay(800);
+      }
+    }
   }
+  throw last;
 }
 
 await openPage();
@@ -510,7 +519,7 @@ shot("progress-empty-1.7.3");
 
 await send("Page.enable").catch(() => {});
 async function mapShot(name, elementId, scale, x, y, detailName) {
-  const detail = await send("Runtime.evaluate", {
+  const detail = await sendRetry("Runtime.evaluate", {
     expression: `(async () => {
       const view = ${JSON.stringify(elementId === "hiddenMap" ? "hidden" : "map")};
       if (typeof setView === "function") setView(view);
@@ -742,7 +751,7 @@ const places = [
   ["tumbleweed", "gunsmith-tumbleweed", -109.3272, 26.8317]
 ];
 for (const [name, id, lat, lng] of places) {
-  const frame = await send("Runtime.evaluate", {
+  const frame = await sendRetry("Runtime.evaluate", {
     expression: `(() => {
       if (typeof setView === "function") setView("map");
       window.frontierShowAccuracy?.(false);
@@ -776,9 +785,8 @@ for (const [name, id, lat, lng] of places) {
   await delay(900);
   shot(`accuracy-part-${name}`);
 }
-await mapShot("hidden-zoom-mid", "hiddenMap", 2.5, 55, 41, "mid");
 await sendRetry("Runtime.evaluate", {
-  expression: `(() => { window.frontierShowAccuracy?.(false); if (typeof setView === "function") setView("map"); return "tiles-off"; })()`,
+  expression: `(() => { window.frontierShowAccuracy?.(false); if (typeof setView === "function") setView("map"); const detail = document.getElementById("mapDetail"); detail?.classList.remove("is-open"); return "map-ready"; })()`,
   returnByValue: true
 });
 
@@ -832,7 +840,7 @@ if (!gestureReport.error && gestureReport.width) {
   await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: cx, y: cy, id: 1 }] });
   await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   await delay(250);
-  const gestureEnd = await send("Runtime.evaluate", {
+  const gestureEnd = await sendRetry("Runtime.evaluate", {
     expression: `(() => {
       const map = document.getElementById("fieldMap").frontierMap;
       const center = map.getCenter();
