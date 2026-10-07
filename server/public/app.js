@@ -861,6 +861,9 @@ function highlightEntry(id) {
     const card = document.querySelector(`[data-entry="${CSS.escape(id)}"]`);
     if (!card) return;
     card.classList.add("highlight");
+    const box = card.getBoundingClientRect();
+    if (box.width < 2 || box.height < 2) return;
+    if (document.documentElement.classList.contains("map-open")) return;
     card.scrollIntoView({ block: "center" });
   }, 40);
 }
@@ -1157,16 +1160,21 @@ function sourceLabel(url) {
   }
 }
 
-function userNote(note) {
-  const text = String(note || "").trim();
-  if (!text) return "";
-  const kept = text.split(/(?<=[.!?])\s+/).filter(sentence => {
+function playerText(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return "";
+  const kept = raw.split(/(?<=[.!?])\s+/).filter(sentence => {
     if (/^source\s+(id|name)\b/i.test(sentence)) return false;
     if (/map frame/i.test(sentence)) return false;
     if (/\b[a-z]+_[a-z0-9_]{2,}\b/i.test(sentence)) return false;
+    if (/sourceLat|sourceLng|least-squares|0\.01552|game-to-map|lat\/lng|plotted (position|point|lat)|converted (from|into|with)|RDOMap frame/i.test(sentence)) return false;
     return true;
   });
   return kept.join(" ").trim();
+}
+
+function userNote(note) {
+  return playerText(note);
 }
 
 function placeRegion(item) {
@@ -1182,11 +1190,11 @@ function placeRegion(item) {
 function howToGet(item) {
   const parts = [];
   const obtain = String(item.obtain || "").trim();
-  const steps = String(item.directions || item.enter || "").trim();
+  const steps = playerText(item.directions || item.enter || "");
   if (obtain && (!steps || !steps.toLowerCase().includes(obtain.toLowerCase()))) parts.push(obtain.endsWith(".") ? obtain : `${obtain}.`);
   if (steps) parts.push(steps);
-  if (item.chapter) parts.push(String(item.chapter));
-  if (item.price) parts.push(String(item.price));
+  if (item.chapter) parts.push(/[.!?]$/.test(String(item.chapter)) ? String(item.chapter) : `${item.chapter}.`);
+  if (item.price) parts.push(/[.!?]$/.test(String(item.price)) ? String(item.price) : `${item.price}.`);
   return parts.join(" ");
 }
 
