@@ -506,7 +506,7 @@ if (!progressBody.includes("Connect Steam") || /42\.5|Back in the Mud/.test(prog
   problems.push(`progress screen did not show the empty state: ${progressBody.slice(0, 180)}`);
 }
 await delay(400);
-shot("progress-empty-1.7.2");
+shot("progress-empty-1.7.3");
 
 await send("Page.enable").catch(() => {});
 async function mapShot(name, elementId, scale, x, y, detailName) {
@@ -540,9 +540,9 @@ async function mapShot(name, elementId, scale, x, y, detailName) {
   shot(name);
   return parsed;
 }
-await mapShot("map-full-1.7.2", "fieldMap", 1, 50, 50, "far");
-await mapShot("map-mid-1.7.2", "fieldMap", 2.5, 70, 55, "mid");
-await mapShot("map-close-1.7.2", "fieldMap", 4.2, 72, 46, "close");
+await mapShot("map-full-1.7.3", "fieldMap", 1, 50, 50, "far");
+await mapShot("map-mid-1.7.3", "fieldMap", 2.5, 70, 55, "mid");
+await mapShot("map-close-1.7.3", "fieldMap", 4.2, 72, 46, "close");
 
 const layoutReport = await send("Runtime.evaluate", {
   expression: `(() => {
@@ -580,32 +580,85 @@ await send("Runtime.evaluate", {
   returnByValue: true
 });
 await delay(500);
-shot("map-controls-1.7.2");
-await send("Runtime.evaluate", {
+const layersReport = await send("Runtime.evaluate", {
   expression: `(() => {
-    document.querySelector("#mapView .map-layers-toggle")?.click();
-    const marker = document.querySelector("#mapMarkers .map-marker, #mapMarkers .map-cluster, #mapMarkers .map-dot");
-    marker?.click();
-    return marker ? "card" : "no-marker";
+    const row = document.querySelector("#mapTags .layer-all");
+    const names = [...document.querySelectorAll("#mapTags .layer-name")].map(node => node.textContent);
+    return JSON.stringify({
+      name: row?.querySelector(".layer-name")?.textContent || "",
+      count: row?.querySelector(".layer-count")?.textContent || "",
+      pressed: row?.getAttribute("aria-pressed") || "",
+      names
+    });
   })()`,
   returnByValue: true
 });
-await delay(600);
-const cardReport = await send("Runtime.evaluate", {
-  expression: `(() => {
-    const card = document.getElementById("mapDetail")?.getBoundingClientRect();
-    const nav = document.querySelector(".bottom-nav")?.getBoundingClientRect();
-    return JSON.stringify({ open: document.getElementById("mapDetail")?.classList.contains("is-open"), cardBottom: card?.bottom, navTop: nav?.top, cardHeight: card?.height });
-  })()`,
-  returnByValue: true
-});
-let cardLayout = {};
-try { cardLayout = JSON.parse(cardReport?.result?.value || "{}"); } catch { cardLayout = {}; }
-console.log("card", JSON.stringify(cardLayout));
-if (!cardLayout.open || !(cardLayout.cardBottom <= cardLayout.navTop + 2) || !(cardLayout.cardHeight > 40)) {
-  problems.push(`marker card is not above the nav: ${JSON.stringify(cardLayout)}`);
+let layersLayout = {};
+try { layersLayout = JSON.parse(layersReport?.result?.value || "{}"); } catch { layersLayout = {}; }
+console.log("layers", JSON.stringify(layersLayout));
+if (layersLayout.name !== "All" || layersLayout.pressed !== "true" || !(Number(layersLayout.count) > 0) || (layersLayout.names || []).includes("None")) {
+  problems.push(`layers sheet ${JSON.stringify(layersLayout)}`);
 }
-shot("map-card-1.7.2");
+shot("layers-sheet-1.7.3");
+await send("Runtime.evaluate", {
+  expression: `(() => { document.querySelector("#mapView .map-layers-toggle")?.click(); return "layers-closed"; })()`,
+  returnByValue: true
+});
+
+async function openMarker(id) {
+  const report = await send("Runtime.evaluate", {
+    expression: `(() => {
+      if (typeof setView === "function") setView("map");
+      const sheet = document.querySelector("#mapView .map-sheet");
+      if (sheet) sheet.hidden = true;
+      const item = (state.mapLocations || []).find(row => row.id === ${JSON.stringify(id)});
+      if (!item || typeof showMapDetail !== "function") return JSON.stringify({ error: "missing" });
+      const node = document.getElementById("fieldMap");
+      const map = node?.frontierMap;
+      if (map && Number.isFinite(item.lat)) {
+        map.setView([item.lat, item.lng], Math.min(map.getMaxZoom(), (node._fitZoom || 1) + 1.6), { animate: false });
+      }
+      showMapDetail(item);
+      const detail = document.getElementById("mapDetail");
+      const card = detail?.getBoundingClientRect();
+      const nav = document.querySelector(".bottom-nav")?.getBoundingClientRect();
+      return JSON.stringify({
+        open: Boolean(detail?.classList.contains("is-open")),
+        text: detail?.innerText || "",
+        title: item.title,
+        sourceCollapsed: Boolean(detail?.querySelector(".map-source")) && !detail.querySelector(".map-source")?.open,
+        cardBottom: card?.bottom, navTop: nav?.top, cardHeight: card?.height
+      });
+    })()`,
+    returnByValue: true
+  });
+  let parsed = {};
+  try { parsed = JSON.parse(report?.result?.value || "{}"); } catch { parsed = { error: "parse" }; }
+  console.log("card", id, JSON.stringify({ ...parsed, text: String(parsed.text || "").slice(0, 280) }));
+  return parsed;
+}
+const bullCard = await openMarker("leg-bull-gator");
+if (!bullCard.open || !(bullCard.cardBottom <= bullCard.navTop + 2) || !(bullCard.cardHeight > 40)) {
+  problems.push(`marker card is not above the nav: ${JSON.stringify(bullCard)}`);
+}
+if (!/Bayou Nwa,\s*Lemoyne/.test(bullCard.text || "") || /RDOMap|Story mode/.test(bullCard.text || "") || !/Lakay/.test(bullCard.text || "")) {
+  problems.push(`bull gator card copy: ${String(bullCard.text || "").slice(0, 240)}`);
+}
+if (!bullCard.sourceCollapsed) problems.push("source link is not inside a collapsed Source section");
+await delay(400);
+shot("map-card-bullgator-1.7.3");
+const arabianCard = await openMarker("horse-white-arabian");
+if (!/Lake Isabella/.test(arabianCard.text || "") || /RDOMap|Published White Arabian marker/.test(arabianCard.text || "")) {
+  problems.push(`white arabian card copy: ${String(arabianCard.text || "").slice(0, 240)}`);
+}
+await delay(400);
+shot("map-card-whitearabian-1.7.3");
+const gunsmithCard = await openMarker("gunsmith-valentine");
+if (!/Valentine,\s*New Hanover/.test(gunsmithCard.text || "") || /Published shop coordinate/.test(gunsmithCard.text || "") || !/ammunition/i.test(gunsmithCard.text || "")) {
+  problems.push(`gunsmith card copy: ${String(gunsmithCard.text || "").slice(0, 240)}`);
+}
+await delay(400);
+shot("map-card-gunsmith-1.7.3");
 
 spawnSync("adb", ["shell", "settings", "put", "system", "accelerometer_rotation", "0"]);
 spawnSync("adb", ["shell", "settings", "put", "system", "user_rotation", "1"]);
@@ -638,14 +691,14 @@ if (!landscapeLayout.open || !(landscapeLayout.cardBottom <= landscapeLayout.nav
 }
 if (landscapeSpread > 8) problems.push(`landscape nav wrapped: ${JSON.stringify(landscapeLayout.tops)}`);
 await delay(700);
-shot("map-landscape-card-1.7.2");
+shot("map-landscape-card-1.7.3");
 spawnSync("adb", ["shell", "settings", "put", "system", "user_rotation", "0"]);
 await delay(800);
 
 await show("hidden");
-shot("hidden-1.7.2");
+shot("hidden-1.7.3");
 await show("home");
-shot("home-1.7.2");
+shot("home-1.7.3");
 const homeReport = await send("Runtime.evaluate", {
   expression: `(() => {
     const home = document.getElementById("homeView");
@@ -663,7 +716,6 @@ try { homeLayout = JSON.parse(homeReport?.result?.value || "{}"); } catch { home
 if (!homeLayout.home || homeLayout.progress || !homeLayout.grid) problems.push(`home screen ${JSON.stringify(homeLayout)}`);
 
 await show("settings");
-shot("settings-steam-1.7.2");
 const pillReport = await send("Runtime.evaluate", {
   expression: `(() => document.getElementById("onlineDot")?.innerText || "")()`,
   returnByValue: true
@@ -678,30 +730,49 @@ const steamCopy = await send("Runtime.evaluate", {
 if (!String(steamCopy?.result?.value || "").includes("Connect Steam")) problems.push("settings steam card missing");
 
 const places = [
-  ["white-arabian", -37.6706, 82.2251],
-  ["jack-hall", -40.8291, 136.8836],
-  ["bull-gator", -75.6282, 144.9287],
-  ["valentine", -53.602, 108.3971],
-  ["saint-denis", -86.3787, 152.6896],
-  ["blackwater", -82.9581, 99.7447],
-  ["rhodes", -83.6534, 130.6434],
-  ["strawberry", -70.03, 84.3196],
-  ["armadillo", -104.3897, 53.4547],
-  ["tumbleweed", -109.3272, 26.8317]
+  ["white-arabian", "horse-white-arabian", -37.6706, 82.2251],
+  ["jack-hall", "treasure-jack-hall", -40.8291, 136.8836],
+  ["bull-gator", "leg-bull-gator", -75.6282, 144.9287],
+  ["valentine", "gunsmith-valentine", -51.509, 106.9164],
+  ["saint-denis", "gunsmith-saint-denis", -83.5753, 153.4529],
+  ["blackwater", "horse-rose-grey-arabian", -82.9581, 99.7447],
+  ["rhodes", "gunsmith-rhodes", -84.1323, 131.8113],
+  ["strawberry", "", -70.03, 84.3196],
+  ["armadillo", "", -104.3897, 53.4547],
+  ["tumbleweed", "gunsmith-tumbleweed", -109.3272, 26.8317]
 ];
-await send("Runtime.evaluate", {
-  expression: `(() => { if (typeof setView === "function") setView("map"); window.frontierShowAccuracy?.(true); return "tiles"; })()`,
-  returnByValue: true
-});
-for (const [name, lat, lng] of places) {
-  await send("Runtime.evaluate", {
+for (const [name, id, lat, lng] of places) {
+  const frame = await send("Runtime.evaluate", {
     expression: `(() => {
-      const map = document.getElementById("fieldMap")?.frontierMap;
-      map?.setView([${lat}, ${lng}], Math.min(map.getMaxZoom(), (document.getElementById("fieldMap")._fitZoom || 1) + 2.4), { animate: false });
-      return "ok";
+      if (typeof setView === "function") setView("map");
+      window.frontierShowAccuracy?.(false);
+      const detail = document.getElementById("mapDetail");
+      detail?.classList.remove("is-open");
+      const layers = document.querySelector("#mapView .map-sheet");
+      if (layers) layers.hidden = true;
+      const item = ${JSON.stringify(id)} ? (state.mapLocations || []).find(row => row.id === ${JSON.stringify(id)}) : null;
+      state.selectedMapId = item ? item.id : null;
+      if (typeof renderMap === "function") renderMap();
+      const node = document.getElementById("fieldMap");
+      const map = node?.frontierMap;
+      const point = item && Number.isFinite(item.lat) ? [item.lat, item.lng] : [${lat}, ${lng}];
+      map?.setView(point, Math.min(map.getMaxZoom(), (node?._fitZoom || 1) + 2.2), { animate: false });
+      detail?.classList.remove("is-open");
+      const labels = [...(node?.querySelectorAll(".map-label") || [])].map(node => node.textContent);
+      return JSON.stringify({
+        title: item?.title || "town-label",
+        card: Boolean(detail?.classList.contains("is-open")),
+        accuracy: Boolean(node?._accuracyOn),
+        labels
+      });
     })()`,
     returnByValue: true
   });
+  let frameReport = {};
+  try { frameReport = JSON.parse(frame?.result?.value || "{}"); } catch { frameReport = {}; }
+  console.log("accuracy", name, JSON.stringify(frameReport));
+  if (frameReport.card || frameReport.accuracy) problems.push(`accuracy frame ${name} still covered: ${JSON.stringify(frameReport)}`);
+  if (id && frameReport.title === "town-label") problems.push(`accuracy frame ${name} missed its marker`);
   await delay(900);
   shot(`accuracy-part-${name}`);
 }
