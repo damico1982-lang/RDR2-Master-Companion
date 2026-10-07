@@ -434,7 +434,12 @@ function shot(name) {
 async function show(view) {
   await send("Runtime.evaluate", {
     expression: `(() => {
-      const panel = document.getElementById(${JSON.stringify(`${view}View`)});
+      const view = ${JSON.stringify(view)};
+      if (typeof setView === "function") {
+        setView(view);
+        return "ok";
+      }
+      const panel = document.getElementById(view + "View");
       document.querySelectorAll(".view").forEach(element => element.classList.remove("active"));
       panel?.classList.add("active");
       panel?.scrollIntoView({ block: "start", behavior: "auto" });

@@ -162,13 +162,22 @@ async function requestJson(path, options = {}) {
   return data;
 }
 
+function navFor(view) {
+  if (view === "map" || view === "hidden") return "guide";
+  return view;
+}
+
 function setView(view) {
   closePreviewDialog();
   $$(".view").forEach(element => element.classList.remove("active"));
   const panel = $(`#${view}View`);
   panel?.classList.add("active");
+  const nav = navFor(view);
   $$(".bottom-nav button").forEach(button => {
-    button.classList.toggle("active", button.dataset.view === view);
+    const on = button.dataset.view === nav;
+    button.classList.toggle("active", on);
+    if (on) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
   });
   panel?.scrollIntoView({ block: "start", behavior: "auto" });
   if (view === "map" || view === "hidden") {
@@ -1103,12 +1112,15 @@ function renderHiddenTags() {
       renderHiddenTags();
       renderHiddenMap();
       renderHiddenList();
-      $("#hiddenDetail").replaceChildren();
+      const detail = $("#hiddenDetail");
+      detail.classList.remove("is-open");
+      detail.style.transform = "";
+      detail.replaceChildren();
       const title = document.createElement("h3");
       title.textContent = "Select a hidden place";
       const body = document.createElement("p");
       body.textContent = "Tap a marker or a name in the list.";
-      $("#hiddenDetail").append(title, body);
+      detail.append(title, body);
     };
     row.appendChild(button);
   }
@@ -1130,29 +1142,199 @@ function renderHiddenTags() {
   row.appendChild(legend);
 }
 
+function sourceLabel(url) {
+  const value = String(url || "");
+  if (/jeanropke\/(?:RDOMap|RDR2CollectorsMap)/i.test(value)) return "Jean Ropke RDOMap";
+  if (/the0neWhoKnocks/i.test(value)) return "Community map";
+  if (/pastebin\.com/i.test(value)) return "Coordinate list";
+  if (/gtaboss\.gg/i.test(value)) return "GTA Boss";
+  try {
+    const host = new URL(value).hostname.replace(/^www\./, "");
+    if (host === "github.com") return "GitHub";
+    return host;
+  } catch {
+    return "Published map";
+  }
+}
+
+function userNote(note) {
+  const text = String(note || "").trim();
+  if (!text) return "";
+  const kept = text.split(/(?<=[.!?])\s+/).filter(sentence => {
+    if (/^source\s+(id|name)\b/i.test(sentence)) return false;
+    if (/map frame/i.test(sentence)) return false;
+    if (/\b[a-z]+_[a-z0-9_]{2,}\b/i.test(sentence)) return false;
+    return true;
+  });
+  return kept.join(" ").trim();
+}
+
+function placeRegion(item) {
+  const region = String(item.region || "").trim();
+  const landmark = String(item.landmark || "").trim();
+  let line = region;
+  if (landmark && !region.toLowerCase().includes(landmark.toLowerCase())) line = line ? `${line} · ${landmark}` : landmark;
+  const mode = item.mode === "story" ? "Story" : item.mode === "online" ? "Online" : item.mode === "either" ? "Story and Online" : "";
+  if (mode) line = line ? `${line} · ${mode}` : mode;
+  return line;
+}
+
+function howToGet(item) {
+  const parts = [];
+  const obtain = String(item.obtain || "").trim();
+  const steps = String(item.directions || item.enter || "").trim();
+  if (obtain && (!steps || !steps.toLowerCase().includes(obtain.toLowerCase()))) parts.push(obtain.endsWith(".") ? obtain : `${obtain}.`);
+  if (steps) parts.push(steps);
+  if (item.chapter) parts.push(String(item.chapter));
+  if (item.price) parts.push(String(item.price));
+  return parts.join(" ");
+}
+
+function cardNotes(item) {
+  const parts = [];
+  if (item.breed || item.coat) {
+    const bits = [];
+    if (item.breed) bits.push(String(item.breed));
+    if (item.coat) bits.push(`${item.coat} coat`);
+    parts.push(`${bits.join(", ")}.`);
+  }
+  const note = userNote(item.note);
+  if (note) parts.push(note);
+  if (item.contents) parts.push(String(item.contents));
+  if (item.approximate || item.accuracyNote) parts.push(item.accuracyNote || "Approximate. No exact published coordinate.");
+  else if (!Number.isFinite(item.lat) && item.enter) parts.push("Not pinned. No published coordinate.");
+  return parts.join(" ");
+}
+
+function sheetLine(label, text) {
+  const p = document.createElement("p");
+  p.className = "map-detail-line";
+  const name = document.createElement("b");
+  name.textContent = label;
+  p.append(name, document.createTextNode(` ${text}`));
+  return p;
+}
+
+function sourceDetails(url) {
+  const href = String(url || "");
+  if (!/^https?:\/\//i.test(href)) return null;
+  const details = document.createElement("details");
+  details.className = "map-source";
+  const summary = document.createElement("summary");
+  summary.textContent = "Source";
+  const link = document.createElement("a");
+  link.href = href;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = sourceLabel(href);
+  details.append(summary, link);
+  return details;
+}
+
+function closeFieldCard() {
+  state.selectedMapId = null;
+  const detail = $("#mapDetail");
+  if (detail) {
+    detail.classList.remove("is-open");
+    detail.style.transform = "";
+  }
+  renderMap();
+}
+
+function closeHiddenCard() {
+  state.selectedHiddenId = null;
+  const detail = $("#hiddenDetail");
+  if (detail) {
+    detail.classList.remove("is-open");
+    detail.style.transform = "";
+  }
+  renderHiddenMap();
+}
+
+function bindSheetSwipe(detail) {
+  if (detail.dataset.swipeBound) return;
+  detail.dataset.swipeBound = "1";
+  let startY = 0;
+  let startX = 0;
+  let tracking = false;
+  let dragged = false;
+  detail.addEventListener("pointerdown", event => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (event.target.closest("button, a, input, textarea, summary, label")) return;
+    if (detail.scrollTop > 2 && !event.target.closest(".map-sheet-handle")) return;
+    tracking = true;
+    dragged = false;
+    startY = event.clientY;
+    startX = event.clientX;
+  });
+  detail.addEventListener("pointermove", event => {
+    if (!tracking) return;
+    const dy = event.clientY - startY;
+    const dx = event.clientX - startX;
+    if (dy > 6 && dy > Math.abs(dx)) {
+      dragged = true;
+      detail.style.transform = `translateY(${dy}px)`;
+    }
+  });
+  const end = event => {
+    if (!tracking) return;
+    tracking = false;
+    const dy = event.clientY - startY;
+    detail.style.transform = "";
+    if (dragged && dy > 56) detail._closeSheet?.();
+    dragged = false;
+  };
+  detail.addEventListener("pointerup", end);
+  detail.addEventListener("pointercancel", end);
+}
+
+function fillPlaceCard(detail, item, actions) {
+  detail.replaceChildren();
+  const style = styleFor(item.category);
+  const handle = document.createElement("div");
+  handle.className = "map-sheet-handle";
+  handle.setAttribute("aria-hidden", "true");
+  const kicker = document.createElement("div");
+  kicker.className = "map-detail-kicker";
+  const swatch = document.createElement("span");
+  swatch.className = "filter-swatch";
+  swatch.style.background = style.color;
+  swatch.style.color = style.ink;
+  swatch.append(markerGlyph(style.glyph));
+  const category = document.createElement("span");
+  category.textContent = style.label;
+  kicker.append(swatch, category);
+  const title = document.createElement("h3");
+  title.textContent = item.title || item.name || "Place";
+  detail.append(handle, kicker, title);
+  const region = placeRegion(item);
+  if (region) detail.append(sheetLine("Region", region));
+  const how = howToGet(item);
+  if (how) detail.append(sheetLine("How to get it", how));
+  const notes = cardNotes(item);
+  if (notes) detail.append(sheetLine("Notes", notes));
+  const source = sourceDetails(item.sourceUrl);
+  if (source) detail.append(source);
+  if (actions) detail.append(actions);
+  detail.classList.add("is-open");
+  const sheet = detail.closest(".map-panel")?.querySelector(".map-sheet");
+  if (sheet) {
+    sheet.hidden = true;
+    sheet.closest(".map-frame")?.querySelector(".map-layers-toggle")?.setAttribute("aria-expanded", "false");
+  }
+  bindSheetSwipe(detail);
+}
+
 function showHiddenDetail(item) {
   state.selectedHiddenId = item.id;
   renderHiddenMap();
   const detail = $("#hiddenDetail");
-  detail.replaceChildren();
-  const title = document.createElement("h3");
-  title.textContent = item.name;
-  detail.appendChild(title);
-  addField(detail, "Region", `${item.region}. ${item.landmark}.`);
-  addField(detail, "How to enter", item.enter);
-  addField(detail, "What's there", item.contents);
-  if (item.approximate || item.accuracyNote) addField(detail, "Accuracy", item.accuracyNote || "Approximate. No exact published coordinate.");
-  else if (Number.isFinite(item.lat)) addField(detail, "Map frame", `${Number(item.lat).toFixed(4)}, ${Number(item.lng).toFixed(4)}.`);
-  else addField(detail, "Map", "Not pinned. No exact published coordinate.");
-  detail.appendChild(foundButton(item.id));
-  detail.classList.add("is-open");
-  const sheet = detail.closest(".map-panel")?.querySelector(".map-sheet");
-  if (sheet) sheet.hidden = true;
-  detail.appendChild(actionButton("ghost compact map-detail-close", "Close card", () => {
-    state.selectedHiddenId = null;
-    detail.classList.remove("is-open");
-    renderHiddenMap();
-  }));
+  detail._closeSheet = closeHiddenCard;
+  const actions = document.createElement("div");
+  actions.className = "map-actions";
+  actions.appendChild(foundButton(item.id));
+  actions.appendChild(actionButton("ghost compact map-detail-close", "Close card", closeHiddenCard));
+  fillPlaceCard(detail, item, actions);
   highlightEntry(item.id);
 }
 
@@ -1707,6 +1889,7 @@ function renderMapTags() {
   all.onclick = () => {
     state.disabledMapCategories.clear();
     state.selectedMapId = null;
+    $("#mapDetail")?.classList.remove("is-open");
     renderMapTags();
     renderMap();
   };
@@ -1733,6 +1916,7 @@ function renderMapTags() {
       if (on) state.disabledMapCategories.add(category);
       else state.disabledMapCategories.delete(category);
       state.selectedMapId = null;
+      $("#mapDetail")?.classList.remove("is-open");
       renderMapTags();
       renderMap();
     };
@@ -1745,27 +1929,7 @@ function showMapDetail(item) {
   state.selectedMapId = item.id;
   renderMap();
   const detail = $("#mapDetail");
-  detail.replaceChildren();
-  const style = styleFor(item.category);
-  const heading = document.createElement("div");
-  heading.className = "map-detail-title";
-  const swatch = document.createElement("span");
-  swatch.className = "filter-swatch";
-  swatch.style.background = style.color;
-  swatch.style.color = style.ink;
-  swatch.append(markerGlyph(style.glyph));
-  const title = document.createElement("h3");
-  title.textContent = item.title;
-  heading.append(swatch, title);
-  const facts = [];
-  if (item.breed) facts.push(`Breed: ${item.breed}`);
-  if (item.coat) facts.push(`Coat: ${item.coat}`);
-  if (item.obtain) facts.push(item.obtain);
-  if (item.price) facts.push(`Price: ${item.price}`);
-  if (item.chapter) facts.push(item.chapter);
-  if (item.shop) facts.push("Shop");
-  const body = document.createElement("p");
-  body.textContent = `${facts.length ? `${facts.join("\n")}\n\n` : ""}${item.region} • ${item.mode}\n\n${item.directions}\n\n${item.note}`;
+  detail._closeSheet = closeFieldCard;
   const actions = document.createElement("div");
   actions.className = "map-actions";
   const ask = document.createElement("button");
@@ -1781,24 +1945,8 @@ function showMapDetail(item) {
     actions.appendChild(actionButton("ghost compact", item.linkLabel || "Open guide entry", () => openEntry(item.linkView, item.linkId)));
   }
   actions.appendChild(foundButton(item.id));
-  const grid = document.createElement("p");
-  grid.textContent = Number.isFinite(item.lat) && Number.isFinite(item.lng)
-    ? `Map frame ${Number(item.lat).toFixed(4)}, ${Number(item.lng).toFixed(4)}.`
-    : "This place is not pinned.";
-  const warn = document.createElement("p");
-  if (item.approximate || item.accuracyNote) {
-    warn.className = "approx-note";
-    warn.textContent = item.accuracyNote || "Approximate. The card is using the nearest published point.";
-  }
-  actions.appendChild(actionButton("ghost compact map-detail-close", "Close card", () => {
-    state.selectedMapId = null;
-    detail.classList.remove("is-open");
-    renderMap();
-  }));
-  detail.classList.add("is-open");
-  const frame = detail.closest(".map-panel")?.querySelector(".map-sheet");
-  if (frame) frame.hidden = true;
-  detail.append(heading, body, grid, ...(warn.textContent ? [warn] : []), actions);
+  actions.appendChild(actionButton("ghost compact map-detail-close", "Close card", closeFieldCard));
+  fillPlaceCard(detail, item, actions);
 }
 
 function assignMapNumbers(items) {
@@ -2252,6 +2400,10 @@ function mountLeafletMap(viewport, paneId) {
     if (!fitting) viewport._userMoved = true;
     applyDetail();
   });
+  map.on("click", () => {
+    const card = viewport.closest(".map-panel")?.querySelector(".map-detail");
+    if (card?.classList.contains("is-open")) card._closeSheet?.();
+  });
   const frame = viewport.closest(".map-frame");
   frame?.querySelector(".map-zoom-in")?.addEventListener("click", () => map.zoomIn(0.5));
   frame?.querySelector(".map-zoom-out")?.addEventListener("click", () => map.zoomOut(0.5));
@@ -2275,7 +2427,7 @@ function mountLeafletMap(viewport, paneId) {
     if (sheet) sheet.hidden = !open;
     layersButton.setAttribute("aria-expanded", open ? "true" : "false");
     const card = viewport.closest(".map-panel")?.querySelector(".map-detail");
-    if (open && card) card.classList.remove("is-open");
+    if (open && card?.classList.contains("is-open")) card._closeSheet?.();
   });
   const fly = () => {
     const query = search.value.trim().toLowerCase();

@@ -10,7 +10,7 @@ const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_TTS_MODEL = "gpt-4o-mini-tts";
 const DEFAULT_TTS_VOICE = "onyx";
 const DEFAULT_TTS_INSTRUCTIONS = "Speak as a deep, warm Black man in his thirties or forties. Low chest voice, unhurried, dry humor, direct. Sound like someone talking across a campfire, not an announcer, not a cartoon, and not a whisper.";
-const APP_VERSION = "1.5.9";
+const APP_VERSION = "1.6.0";
 const PUBLIC_DIR = fileURLToPath(new URL("./public/", import.meta.url));
 const PUBLIC_INDEX = fileURLToPath(new URL("./public/index.html", import.meta.url));
 
