@@ -174,6 +174,12 @@ function setView(view) {
     const map = document.getElementById(view === "map" ? "fieldMap" : "hiddenMap");
     requestAnimationFrame(() => map?.frontierReflow?.());
   }
+  syncMapScrollLock();
+}
+
+function syncMapScrollLock() {
+  const open = Boolean(document.querySelector("#mapView.active .map-frame.is-expanded, #hiddenView.active .map-frame.is-expanded"));
+  document.documentElement.classList.toggle("map-open", open);
 }
 
 $$('[data-view]').forEach(button => {
@@ -2184,6 +2190,7 @@ const MAP_GAZETTEER = [
 function mountSchematicMap(viewport, onZoom) {
   if (!viewport || viewport.dataset.zoomReady) return;
   viewport.dataset.zoomReady = "1";
+  if (viewport.closest(".map-frame")?.classList.contains("is-expanded")) syncMapScrollLock();
   viewport.dataset.scale = "1";
   viewport.dataset.detail = "far";
   const stage = document.createElement("div");
@@ -2268,6 +2275,15 @@ function mountSchematicMap(viewport, onZoom) {
     stage.querySelectorAll(".map-marker").forEach(marker => {
       marker.style.transform = `translate(-50%, -50%) scale(${1 / scale})`;
     });
+    const pxPerUser = (metrics().mw || 1) / 3888;
+    stage.querySelectorAll(".state-borders, .county-borders").forEach(node => {
+      const hairline = node.classList.contains("county-borders") ? 0.9 : 1.15;
+      const dash = node.classList.contains("county-borders") ? 1.15 : 1.45;
+      const gap = node.classList.contains("county-borders") ? 3.1 : 3.6;
+      const unit = pxPerUser * scale || 1;
+      node.style.strokeWidth = String(hairline / unit);
+      node.style.strokeDasharray = `${dash / unit} ${gap / unit}`;
+    });
     const detail = scale < 1.8 ? "far" : scale < 3.6 ? "mid" : "close";
     viewport.dataset.scale = scale.toFixed(3);
     viewport.dataset.detail = detail;
@@ -2338,6 +2354,7 @@ function mountSchematicMap(viewport, onZoom) {
       const open = frame.classList.toggle("is-expanded");
       expandButton.textContent = open ? "Close" : "Expand";
       expandButton.setAttribute("aria-pressed", open ? "true" : "false");
+      syncMapScrollLock();
       fitted = false;
       scale = 1;
       viewport.frontierReflow?.();

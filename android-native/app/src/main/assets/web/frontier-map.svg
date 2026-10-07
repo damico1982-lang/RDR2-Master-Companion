@@ -1,5 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 3888 2944" class="frontier-map" role="img" aria-label="Original parchment map of the frontier">
   <defs>
+    <clipPath id="west-corner-MAPID"><rect x="-40" y="-80" width="2100" height="3200"/></clipPath>
     <clipPath id="land-MAPID"><path transform="translate(0,2944) scale(1,-1)" d="M1997 2902 c0 -3 -1 -4 -1 -5 -1 0 -2 -1 -1 -2 0 -2 -2 -3 -4 -2 -1
 0 -1 2 -1 3 1 1 0 0 -1 -1 -2 -2 -3 -3 -4 -3 -1 0 -1 -1 -1 -2 0 -1 -1 -3 -3
 -4 -1 -1 -4 -3 -6 -5 -2 -3 -3 -3 -5 -2 -1 1 -2 1 -2 2 0 0 -1 1 -2 1 -1 1 -1
@@ -7202,7 +7203,7 @@ c1 -1 2 -2 2 -2 1 0 1 1 0 2 -1 0 -2 1 -2 1 -1 0 -1 -1 0 -1z M767 223 c0 0 0
 4 l-1 2 0 -2z M122 49 c-1 -2 -1 -6 0 -6 0 -1 1 1 1 4 0 2 0 4 0 4 -1 0 -1 -1
 -1 -2z M174 35 c0 -1 0 -2 1 -1 1 0 1 1 1 2 0 0 0 1 -1 1 -1 0 -1 -1 -1 -2z
 M128 24 c1 -2 2 -3 2 -3 1 0 1 1 0 3 -2 3 -3 2 -2 0z"/>
-      <path fill="#d2b895" d="M0 322 l0 -322 51 0 52 0 0 3 c1 2 0 3 -1 4 -1 1 -1 1 1 2 1 1 2 3 4
+      <path clip-path="url(#west-corner-MAPID)" fill="#d2b895" d="M0 322 l0 -322 51 0 52 0 0 3 c1 2 0 3 -1 4 -1 1 -1 1 1 2 1 1 2 3 4
 4 1 1 2 2 2 3 0 2 1 3 1 4 1 0 1 1 1 1 -1 0 -1 0 -2 0 0 0 -1 1 -2 1 0 1 -2 1
 -3 0 -1 0 -2 -1 -2 0 -1 0 0 3 2 4 1 1 1 2 0 3 -1 1 0 2 3 5 1 3 3 5 3 6 0 1
 0 1 1 0 1 -2 2 -2 5 -1 2 2 3 2 3 6 0 5 2 8 6 10 l4 1 4 -2 c3 -2 9 -3 11 -3
@@ -7949,25 +7950,26 @@ c-1 1 -2 3 -3 4 0 2 -4 6 -6 6 0 -1 -2 -1 -3 -2 -3 -3 -6 -2 -6 2 -1 2 -6 2
 3 -1 3 0 3 -1 0 -5 l-2 -3 3 -1 c4 -2 7 -1 5 2 -1 1 -1 4 -1 6 l-1 3 -3 1 c-2
 0 -3 -1 -4 -2z"/>
     </g>
-    <g class="state-borders" fill="none" stroke="#6a5340" stroke-width="14" stroke-linecap="round" stroke-dasharray="1 34" opacity="0.78">
+    <rect fill="#cbb390" x="3200" y="2700" width="700" height="260"/>
+    <g class="state-borders" fill="none" stroke="#6a5340" stroke-width="1.15" stroke-linecap="butt" stroke-dasharray="1.6 3.6" opacity="0.72">
       <path d="M1760 700 C2140 780 2520 640 2980 740 C3340 820 3580 700 3740 640"/>
       <path d="M1980 720 C1900 1040 2080 1360 1960 1640 C1900 1820 2060 1960 1980 2100"/>
       <path d="M2060 1500 C2380 1400 2680 1560 3040 1460 C3320 1380 3560 1480 3720 1360"/>
       <path d="M220 2180 C640 2080 1120 2220 1580 2120 C1860 2060 2080 2140 2260 2080"/>
     </g>
-    <g fill="#4a3828" font-family="Liberation Serif, Georgia, Times New Roman, serif">
-      <text class="region-label" x="2480" y="360" text-anchor="middle" font-size="118" letter-spacing="18">AMBARINO</text>
-      <text class="region-label" x="2620" y="1140" text-anchor="middle" font-size="96" letter-spacing="10">NEW HANOVER</text>
-      <text class="region-label" x="1640" y="1280" text-anchor="middle" font-size="58" letter-spacing="3">WEST ELIZABETH</text>
-      <text class="region-label" x="3080" y="1940" text-anchor="middle" font-size="92" letter-spacing="12">LEMOYNE</text>
-      <text class="region-label" x="860" y="2520" text-anchor="middle" font-size="90" letter-spacing="10">NEW AUSTIN</text>
-      <text class="water-label" font-size="52" letter-spacing="8" x="2620" y="1760" text-anchor="middle">Flat Iron Lake</text>
-      <text class="water-label" font-size="46" letter-spacing="6" x="980" y="2580" text-anchor="middle">San Luis River</text>
-      <text class="water-label" font-size="46" letter-spacing="6" x="3620" y="1520" text-anchor="middle" transform="rotate(-68 3620 1520)">Lannahechee River</text>
+    <g fill="#6d5b48" font-family="Liberation Serif, Georgia, Times New Roman, serif" font-weight="400">
+      <text class="region-label" x="2280" y="340" text-anchor="middle" font-size="34" letter-spacing="52">AMBARINO</text>
+      <text class="region-label" x="2620" y="1040" text-anchor="middle" font-size="30" letter-spacing="22">NEW HANOVER</text>
+      <text class="region-label" x="1520" y="1280" text-anchor="middle" font-size="22" letter-spacing="14">WEST ELIZABETH</text>
+      <text class="region-label" x="3180" y="1880" text-anchor="middle" font-size="30" letter-spacing="28">LEMOYNE</text>
+      <text class="region-label" x="900" y="2360" text-anchor="middle" font-size="26" letter-spacing="18" transform="rotate(-18 900 2360)">NEW AUSTIN</text>
+      <text class="water-label" font-size="30" letter-spacing="6" x="2620" y="1760" text-anchor="middle">Flat Iron Lake</text>
+      <text class="water-label" font-size="28" letter-spacing="5" x="980" y="2580" text-anchor="middle">San Luis River</text>
+      <text class="water-label" font-size="28" letter-spacing="5" x="3620" y="1520" text-anchor="middle" transform="rotate(-68 3620 1520)">Lannahechee River</text>
     </g>
   </g>
   <g class="layer-mid">
-    <g class="county-borders" fill="none" stroke="#6a5340" stroke-width="9" stroke-linecap="round" stroke-dasharray="1 28" opacity="0.58">
+    <g class="county-borders" fill="none" stroke="#7a6552" stroke-width="0.85" stroke-linecap="butt" stroke-dasharray="1.1 3.2" opacity="0.55">
       <path d="M2360 160 C2340 340 2460 520 2360 700"/>
       <path d="M2140 760 C2080 980 2200 1180 2100 1400"/>
       <path d="M3120 700 C3080 920 3200 1120 3140 1360"/>
@@ -7979,22 +7981,22 @@ c-1 1 -2 3 -3 4 0 2 -4 6 -6 6 0 -1 -2 -1 -3 -2 -3 -3 -6 -2 -6 2 -1 2 -6 2
       <path d="M620 2200 C580 2360 680 2520 600 2680"/>
       <path d="M240 2520 C560 2460 900 2560 1240 2480"/>
     </g>
-    <g fill="#4e3c2e" font-family="Liberation Serif, Georgia, Times New Roman, serif">
-      <text class="county-label" x="2100" y="520" text-anchor="middle" font-size="50">Grizzlies West</text>
-      <text class="county-label" x="3000" y="460" text-anchor="middle" font-size="50">Grizzlies East</text>
-      <text class="county-label" x="2080" y="960" text-anchor="middle" font-size="46">Cumberland Forest</text>
-      <text class="county-label" x="2460" y="1360" text-anchor="middle" font-size="50">Heartlands</text>
-      <text class="county-label" x="3340" y="820" text-anchor="middle" font-size="46">Roanoke Ridge</text>
-      <text class="county-label" x="2760" y="1280" text-anchor="middle" font-size="46">Scarlett Meadows</text>
-      <text class="county-label" x="3000" y="1580" text-anchor="middle" font-size="46">Bayou Nwa</text>
-      <text class="county-label" x="3380" y="1080" text-anchor="middle" font-size="42">Bluewater Marsh</text>
-      <text class="county-label" x="1780" y="1480" text-anchor="middle" font-size="46">Big Valley</text>
-      <text class="county-label" x="1500" y="1720" text-anchor="middle" font-size="46">Tall Trees</text>
-      <text class="county-label" x="1820" y="1880" text-anchor="middle" font-size="46">Great Plains</text>
-      <text class="county-label" x="1500" y="2220" text-anchor="middle" font-size="42">Hennigan's Stead</text>
-      <text class="county-label" x="1040" y="2260" text-anchor="middle" font-size="42">Cholla Springs</text>
-      <text class="county-label" x="720" y="2620" text-anchor="middle" font-size="42">Rio Bravo</text>
-      <text class="county-label" x="380" y="2340" text-anchor="middle" font-size="38">Gaptooth Ridge</text>
+    <g fill="#8a7764" font-family="Liberation Serif, Georgia, Times New Roman, serif" font-weight="400">
+      <text class="county-label" x="2100" y="520" text-anchor="middle" font-size="28">Grizzlies West</text>
+      <text class="county-label" x="3000" y="460" text-anchor="middle" font-size="28">Grizzlies East</text>
+      <text class="county-label" x="2080" y="960" text-anchor="middle" font-size="26">Cumberland Forest</text>
+      <text class="county-label" x="2460" y="1360" text-anchor="middle" font-size="28">Heartlands</text>
+      <text class="county-label" x="3340" y="820" text-anchor="middle" font-size="26">Roanoke Ridge</text>
+      <text class="county-label" x="2760" y="1280" text-anchor="middle" font-size="26">Scarlett Meadows</text>
+      <text class="county-label" x="3000" y="1580" text-anchor="middle" font-size="26">Bayou Nwa</text>
+      <text class="county-label" x="3380" y="1080" text-anchor="middle" font-size="24">Bluewater Marsh</text>
+      <text class="county-label" x="1780" y="1480" text-anchor="middle" font-size="26">Big Valley</text>
+      <text class="county-label" x="1500" y="1720" text-anchor="middle" font-size="26">Tall Trees</text>
+      <text class="county-label" x="1820" y="1880" text-anchor="middle" font-size="26">Great Plains</text>
+      <text class="county-label" x="1500" y="2220" text-anchor="middle" font-size="24">Hennigan's Stead</text>
+      <text class="county-label" x="1040" y="2260" text-anchor="middle" font-size="24">Cholla Springs</text>
+      <text class="county-label" x="720" y="2620" text-anchor="middle" font-size="24">Rio Bravo</text>
+      <text class="county-label" x="380" y="2340" text-anchor="middle" font-size="22">Gaptooth Ridge</text>
     </g>
   </g>
   <g class="layer-close">
