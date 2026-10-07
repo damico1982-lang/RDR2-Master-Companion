@@ -27,8 +27,9 @@ COAST = (62, 84, 90)
 ROAD = (126, 96, 68)
 RAIL = (78, 62, 48)
 BORDER = (108, 86, 62)
-INK = (92, 64, 44)
-WATER_INK = (58, 86, 94)
+INK = (42, 26, 14)
+WATER_INK = (32, 62, 70)
+COUNTY_INK = (68, 48, 32)
 
 STATES = {"AMBARINO", "NEW HANOVER", "WEST ELIZABETH", "LEMOYNE", "NEW AUSTIN"}
 WATERS = {"Flat Iron Lake", "San Luis River", "Lannahechee River"}
@@ -89,7 +90,7 @@ def water_mask(image):
 def line_masks(image, water):
     gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
     hat = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7)))
-    raw = ((hat > 20) & ~water).astype(np.uint8)
+    raw = ((hat > 26) & ~water).astype(np.uint8)
     # Drop specks, then bridge tiny gaps along a road without welding a word into a blob.
     count, labels, stats, _ = cv2.connectedComponentsWithStats(raw, connectivity=8)
     speck = raw.copy()
@@ -107,7 +108,7 @@ def line_masks(image, water):
         width = int(stats[index, cv2.CC_STAT_WIDTH])
         height = int(stats[index, cv2.CC_STAT_HEIGHT])
         extent = max(width, height)
-        if area < 24 or extent < 28:
+        if area < 36 or extent < 48:
             continue
         component = labels == index
         raw_here = component & (speck > 0)
@@ -120,7 +121,7 @@ def line_masks(image, water):
             continue
         if thickness > 16 and extent < 220:
             continue
-        target = rail if float(hat[raw_here].mean()) > 34 and extent > 80 else roads
+        target = rail if float(hat[raw_here].mean()) > 42 and extent > 160 and thickness < 8 else roads
         target[raw_here] = 1
     remain = (speck > 0) & (roads == 0) & (rail == 0)
     border_join = cv2.dilate(remain.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9)))
@@ -149,50 +150,54 @@ def terrain(gray, land):
     sample = mag[land]
     if sample.size == 0:
         return np.zeros(gray.shape, dtype=bool)
-    low = np.percentile(sample, 90)
-    high = np.percentile(sample, 98)
+    low = np.percentile(sample, 96)
+    high = np.percentile(sample, 99.2)
     lines = (mag > low) & (mag < high) & land
     yy, xx = np.mgrid[0:gray.shape[0], 0:gray.shape[1]]
-    return lines & ((xx + yy) % 4 == 0)
+    return lines & ((xx // 2 + yy // 2) % 5 == 0)
 
 
-def dotted(mask, step=6):
-    dots = np.zeros_like(mask, dtype=bool)
+def dotted(mask, step=14, radius=4):
+    dots = np.zeros(mask.shape, np.uint8)
     ys, xs = np.where(mask)
     if len(xs) == 0:
-        return dots
+        return dots.astype(bool)
     cells = {}
     for y, x in zip(ys, xs):
         key = (int(y) // step, int(x) // step)
-        cells.setdefault(key, []).append((int(y), int(x)))
-    for points in cells.values():
-        if len(points) < 2:
+        bucket = cells.setdefault(key, [0, 0, 0])
+        bucket[0] += int(y)
+        bucket[1] += int(x)
+        bucket[2] += 1
+    for total_y, total_x, count in cells.values():
+        if count < 2:
             continue
-        y = int(round(sum(point[0] for point in points) / len(points)))
-        x = int(round(sum(point[1] for point in points) / len(points)))
-        dots[y, x] = True
-    return cv2.dilate(dots.astype(np.uint8), np.ones((2, 2), np.uint8)) > 0
+        cv2.circle(dots, (total_x // count, total_y // count), radius, 255, thickness=-1)
+    return dots > 0
+
+
+def keep_long(mask, min_extent):
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(mask.astype(np.uint8), connectivity=8)
+    kept = np.zeros(mask.shape, dtype=bool)
+    for index in range(1, count):
+        extent = max(int(stats[index, cv2.CC_STAT_WIDTH]), int(stats[index, cv2.CC_STAT_HEIGHT]))
+        if extent >= min_extent:
+            kept[labels == index] = True
+    return kept
 
 
 def paint_base(water, roads, rail, borders, relief):
     canvas = np.empty((HEIGHT, WIDTH, 3), dtype=np.uint8)
     canvas[:] = PAPER
-    shade = np.array([186, 164, 132], dtype=np.uint8)
-    canvas[relief] = (canvas[relief].astype(np.int16) * 3 + shade.astype(np.int16)) // 4
+    if relief is not None and relief.any():
+        shade = np.array([176, 154, 124], dtype=np.uint8)
+        canvas[relief] = (canvas[relief].astype(np.int16) * 4 + shade.astype(np.int16)) // 5
     canvas[water] = WATER
     coast = cv2.dilate(water.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool) & ~water
     canvas[coast] = COAST
     canvas[cv2.dilate(roads.astype(np.uint8), np.ones((2, 2), np.uint8)).astype(bool) & ~water] = ROAD
-    rail_line = cv2.dilate(rail.astype(np.uint8), np.ones((2, 2), np.uint8)).astype(bool) & ~water
-    canvas[rail_line] = RAIL
-    # Cross-ties, so a rail line is not just another road.
-    tie = np.zeros(rail.shape, dtype=bool)
-    ys, xs = np.where(rail)
-    for y, x in zip(ys[::8], xs[::8]):
-        tie[max(0, y - 2):y + 3, x] = True
-        tie[y, max(0, x - 2):x + 3] = True
-    canvas[tie & ~water] = RAIL
-    canvas[dotted(borders) & ~water] = BORDER
+    canvas[cv2.dilate(rail.astype(np.uint8), np.ones((2, 2), np.uint8)).astype(bool) & ~water] = RAIL
+    canvas[dotted(borders) & ~water] = (72, 54, 36)
     return canvas
 
 
@@ -207,37 +212,37 @@ def tracked(draw, text, xy, font, fill, spacing):
 def draw_labels(canvas, level):
     image = Image.fromarray(canvas)
     draw = ImageDraw.Draw(image)
-    state_size = 46 if level == "far" else 40
+    sizes = {
+        "far": (112, 14, 64, 52, 58),
+        "mid": (52, 6, 32, 28, 30),
+        "close": (40, 4, 24, 22, 24),
+    }
+    state_size, state_spacing, county_size, town_size, water_size = sizes[level]
     state_font = ImageFont.truetype(FONT_BOLD, state_size)
-    county_font = ImageFont.truetype(FONT, 18 if level == "close" else 16)
-    town_font = ImageFont.truetype(FONT_BOLD, 15 if level == "far" else 18)
-    water_font = ImageFont.truetype(FONT_ITALIC, 22 if level == "far" else 20)
+    county_font = ImageFont.truetype(FONT_BOLD, county_size)
+    town_font = ImageFont.truetype(FONT_BOLD, town_size)
+    water_font = ImageFont.truetype(FONT_ITALIC, water_size)
     labels = json.loads(GAZETTEER.read_text())
     for item in labels:
         name = item["name"]
         x = int(item["lng"] * UNIT)
         y = int(-item["lat"] * UNIT)
         if name in STATES:
-            spacing = 5
-            width = sum(state_font.getlength(char) + spacing for char in name)
-            tracked(draw, name, (x - width / 2, y - state_size * 0.55), state_font, INK, spacing)
+            width = sum(state_font.getlength(char) + state_spacing for char in name)
+            tracked(draw, name, (x - width / 2, y - state_size * 0.7), state_font, INK, state_spacing)
             continue
         if name in WATERS:
-            width = water_font.getlength(name)
-            tracked(draw, name, (x - width / 2, y), water_font, WATER_INK, 1.5)
+            width = sum(water_font.getlength(char) + 2 for char in name)
+            tracked(draw, name, (x - width / 2, y), water_font, WATER_INK, 2)
             continue
         if name in MAJOR_TOWNS or name in {"Colter", "Wapiti", "Van Horn Trading Post", "Emerald Ranch", "Lagras"}:
-            if level == "far" and name not in MAJOR_TOWNS:
-                continue
             label = "VAN HORN" if name == "Van Horn Trading Post" else name.upper()
             width = town_font.getlength(label)
-            draw.ellipse((x - 2, y - 2, x + 2, y + 2), fill=INK)
-            draw.text((x - width / 2, y + 4), label, font=town_font, fill=INK)
-            continue
-        if level == "far":
+            draw.ellipse((x - 3, y - 3, x + 3, y + 3), fill=INK)
+            draw.text((x - width / 2, y + 5), label, font=town_font, fill=INK)
             continue
         width = county_font.getlength(name)
-        draw.text((x - width / 2, y), name, font=county_font, fill=(118, 92, 64))
+        draw.text((x - width / 2, y), name, font=county_font, fill=COUNTY_INK)
     return np.array(image)
 
 
@@ -272,16 +277,16 @@ def main():
     )
     bounds = land_bounds(water, roads, rail)
     print("landBounds", bounds)
-    base = paint_base(water, roads, rail, borders, relief)
-    Image.fromarray(base).resize((880, 720), Image.LANCZOS).save("/tmp/rdr2tiles/art-full.jpg", quality=86)
-    Image.fromarray(base[500:680, 1000:1320]).save("/tmp/rdr2tiles/art-val.jpg", quality=90)
+    far_base = paint_base(water, keep_long(roads, 70), keep_long(rail, 180), borders, None)
+    detail_base = paint_base(water, roads, rail, borders, relief)
+    Image.fromarray(far_base).resize((880, 720), Image.LANCZOS).save("/tmp/rdr2tiles/art-full.jpg", quality=86)
     for level in ("far", "mid", "close"):
-        painted = draw_labels(base, level)
+        painted = draw_labels(far_base if level == "far" else detail_base, level)
         out_name = f"parchment-{level}.jpg"
         encoded = Image.fromarray(painted)
         for folder in OUT_DIRS:
             folder.mkdir(parents=True, exist_ok=True)
-            encoded.save(folder / out_name, quality=84, optimize=True)
+            encoded.save(folder / out_name, quality=88, optimize=True)
             old = folder / f"parchment-{level}.png"
             if old.exists():
                 old.unlink()

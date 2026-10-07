@@ -503,10 +503,13 @@ a:focus-visible {
   touch-action: none;
   overscroll-behavior: none;
 }
+html.map-open,
+html.map-open body,
 .field-map.leaflet-container,
 .field-map .leaflet-pane,
-.field-map .leaflet-map-pane {
-  background: #d6be9c;
+.field-map .leaflet-map-pane,
+.field-map .leaflet-overlay-pane {
+  background: #d6be9c !important;
   touch-action: none;
   outline: none;
   font-family: "Liberation Serif", Georgia, "Times New Roman", serif;
@@ -686,8 +689,8 @@ a:focus-visible {
   place-items: center;
   border: 1px solid rgba(62, 46, 32, .55);
   border-radius: 50%;
-  color: #f4ead8;
-  background: rgba(92, 74, 52, .78);
+  color: #f8efe0;
+  background: #5c4030;
   box-shadow: 0 1px 2px rgba(40, 24, 12, .28);
   font: 700 11px/1 Georgia, "Times New Roman", serif;
 }

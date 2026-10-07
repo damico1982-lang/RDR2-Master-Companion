@@ -2348,23 +2348,58 @@ function drawPins(viewport) {
   const onSelect = viewport._pinSelect;
   const found = foundIds();
   const layer = L.layerGroup();
-  if (viewport.dataset.detail === "far") {
+  const detail = viewport.dataset.detail || "far";
+  const stacks = new Map();
+  const addIcon = (item, lat, lng) => {
+    const stacksKey = `${lat}|${lng}`;
+    const index = stacks.get(stacksKey) || 0;
+    stacks.set(stacksKey, index + 1);
+    const style = styleFor(item.category);
+    const angle = index * 1.15;
+    const radius = index === 0 ? 0 : 12 + (index - 1) * 3;
+    const icon = L.divIcon({
+      className: `map-marker${markerKind(item)}${activeId === item.id ? " active" : ""}${found.has(item.id) ? " found" : ""}`,
+      html: `<svg viewBox="0 0 24 24" aria-hidden="true">${MARKER_GLYPHS[style.glyph] || MARKER_GLYPHS.xmark}</svg>`,
+      iconSize: [22, 22],
+      iconAnchor: [11 - Math.cos(angle) * radius, 11 - Math.sin(angle) * radius]
+    });
+    const marker = L.marker([lat, lng], { icon, pane: "pins", keyboard: false, bubblingMouseEvents: false });
+    marker.on("click", event => {
+      if (event.originalEvent) event.originalEvent.stopPropagation();
+      onSelect(item);
+    });
+    marker.on("add", () => {
+      const element = marker.getElement();
+      if (!element) return;
+      element.style.background = style.color;
+      element.style.color = style.ink;
+      const name = item.title || item.name || "Marker";
+      element.title = name;
+      element.setAttribute("aria-label", name);
+    });
+    layer.addLayer(marker);
+  };
+  if (detail !== "close") {
     const groups = new Map();
     for (const item of items) {
       const point = map.latLngToContainerPoint([item.lat, item.lng]);
-      const key = `${Math.round(point.x / 42)}:${Math.round(point.y / 42)}`;
+      const key = `${Math.round(point.x / 36)}:${Math.round(point.y / 36)}`;
       const group = groups.get(key) || [];
       group.push(item);
       groups.set(key, group);
     }
     for (const group of groups.values()) {
+      if (group.length === 1 && detail !== "far") {
+        addIcon(group[0], group[0].lat, group[0].lng);
+        continue;
+      }
       if (group.length === 1) {
         const item = group[0];
         const style = styleFor(item.category);
         const icon = L.divIcon({
           className: "map-dot",
           html: "",
-          iconSize: [8, 8],
+          iconSize: [9, 9],
           iconAnchor: [4, 4]
         });
         const marker = L.marker([item.lat, item.lng], { icon, pane: "pins", keyboard: false, bubblingMouseEvents: false });
@@ -2381,61 +2416,39 @@ function drawPins(viewport) {
           element.setAttribute("aria-label", name);
         });
         layer.addLayer(marker);
-      } else {
-        const lat = group.reduce((sum, item) => sum + item.lat, 0) / group.length;
-        const lng = group.reduce((sum, item) => sum + item.lng, 0) / group.length;
-        const icon = L.divIcon({
-          className: "map-cluster",
-          html: String(group.length),
-          iconSize: [22, 22],
-          iconAnchor: [11, 11]
-        });
-        const marker = L.marker([lat, lng], { icon, pane: "pins", keyboard: false, bubblingMouseEvents: false });
-        marker.on("click", event => {
-          if (event.originalEvent) event.originalEvent.stopPropagation();
-          viewport._userMoved = true;
-          map.setView([lat, lng], Math.min(map.getMaxZoom(), map.getZoom() + 1.4), { animate: true });
-        });
-        marker.on("add", () => {
-          const element = marker.getElement();
-          if (!element) return;
-          element.title = `${group.length} places`;
-          element.setAttribute("aria-label", element.title);
-        });
-        layer.addLayer(marker);
+        continue;
       }
-    }
-  } else {
-    const stacks = new Map();
-    for (const item of items) {
-      const key = `${item.lat}|${item.lng}`;
-      const index = stacks.get(key) || 0;
-      stacks.set(key, index + 1);
-      const style = styleFor(item.category);
-      const angle = index * 1.15;
-      const radius = index === 0 ? 0 : 12 + (index - 1) * 3;
+      const lat = group.reduce((sum, item) => sum + item.lat, 0) / group.length;
+      const lng = group.reduce((sum, item) => sum + item.lng, 0) / group.length;
+      const counts = new Map();
+      for (const item of group) counts.set(item.category, (counts.get(item.category) || 0) + 1);
+      const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+      const style = styleFor(top);
+      const size = group.length > 12 ? 30 : 26;
       const icon = L.divIcon({
-        className: `map-marker${markerKind(item)}${activeId === item.id ? " active" : ""}${found.has(item.id) ? " found" : ""}`,
-        html: `<svg viewBox="0 0 24 24" aria-hidden="true">${MARKER_GLYPHS[style.glyph] || MARKER_GLYPHS.xmark}</svg>`,
-        iconSize: [22, 22],
-        iconAnchor: [11 - Math.cos(angle) * radius, 11 - Math.sin(angle) * radius]
+        className: "map-cluster",
+        html: String(group.length),
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2]
       });
-      const marker = L.marker([item.lat, item.lng], { icon, pane: "pins", keyboard: false, bubblingMouseEvents: false });
+      const marker = L.marker([lat, lng], { icon, pane: "pins", keyboard: false, bubblingMouseEvents: false });
       marker.on("click", event => {
         if (event.originalEvent) event.originalEvent.stopPropagation();
-        onSelect(item);
+        viewport._userMoved = true;
+        map.setView([lat, lng], Math.min(map.getMaxZoom(), map.getZoom() + 1.4), { animate: true });
       });
       marker.on("add", () => {
         const element = marker.getElement();
         if (!element) return;
         element.style.background = style.color;
         element.style.color = style.ink;
-        const name = item.title || item.name || "Marker";
-        element.title = name;
-        element.setAttribute("aria-label", name);
+        element.title = `${group.length} places`;
+        element.setAttribute("aria-label", element.title);
       });
       layer.addLayer(marker);
     }
+  } else {
+    for (const item of items) addIcon(item, item.lat, item.lng);
   }
   layer.addTo(map);
   map._pinLayer = layer;
@@ -2461,7 +2474,7 @@ function mountLeafletMap(viewport, paneId) {
     scrollWheelZoom: true,
     boxZoom: false,
     keyboard: false,
-    maxBounds: MAP_FRAME.pad(0.06),
+    maxBounds: MAP_FRAME,
     maxBoundsViscosity: 1
   });
   viewport.frontierMap = map;
@@ -2502,7 +2515,7 @@ function mountLeafletMap(viewport, paneId) {
     map.setMinZoom(-2);
     map.invalidateSize({ animate: false });
     const home = viewport._landBounds?.isValid?.() ? viewport._landBounds : MAP_FRAME;
-    map.fitBounds(home, { animate: false, padding: [12, 12] });
+    map.fitBounds(home, { animate: false, padding: [0, 0] });
     viewport._fitZoom = map.getZoom();
     map.setMinZoom(viewport._fitZoom);
     viewport._userMoved = false;
@@ -2535,7 +2548,7 @@ function mountLeafletMap(viewport, paneId) {
     applyDetail();
   });
   map.on("moveend", () => {
-    if (!fitting && viewport.dataset.detail === "far") viewport._drawPins?.();
+    if (!fitting && viewport.dataset.detail !== "close") viewport._drawPins?.();
   });
   map.on("click", () => {
     const card = viewport.closest(".map-panel")?.querySelector(".map-detail");
