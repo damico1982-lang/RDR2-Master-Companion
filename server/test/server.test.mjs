@@ -64,7 +64,7 @@ test("GET /api/health stays public for Render and reports readiness", async () =
       model: "gpt-6-luna",
       authRequired: true,
       authorized: false,
-      version: "1.5.0",
+      version: "1.5.1",
       tts: {
         enabled: true,
         model: "gpt-4o-mini-tts",
@@ -444,6 +444,7 @@ test("android assets match the web guide shell", () => {
     "index.html",
     "styles.css",
     "sw.js",
+    "frontier-map.svg",
     "content/guide.json",
     "content/map.json",
     "content/legendaries.json",

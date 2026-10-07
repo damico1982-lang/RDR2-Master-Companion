@@ -10,7 +10,7 @@ const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_TTS_MODEL = "gpt-4o-mini-tts";
 const DEFAULT_TTS_VOICE = "onyx";
 const DEFAULT_TTS_INSTRUCTIONS = "Speak as a deep, warm Black man in his thirties or forties. Low chest voice, unhurried, dry humor, direct. Sound like someone talking across a campfire, not an announcer, not a cartoon, and not a whisper.";
-const APP_VERSION = "1.5.0";
+const APP_VERSION = "1.5.1";
 const PUBLIC_DIR = fileURLToPath(new URL("./public/", import.meta.url));
 const PUBLIC_INDEX = fileURLToPath(new URL("./public/index.html", import.meta.url));
 
@@ -27,7 +27,7 @@ Treat "cheats" as built-in cheat codes, legitimate strategies, and secrets. Neve
 Never invent a mission, item, patch, event, location, payout, spawn cycle, clock time, or mechanic. Mention prerequisites, chapter or role requirements, platform/version differences, randomized spawns, and limited-time availability when they change the answer.
 For live or current questions, prefer official Rockstar sources for patches, events, and service changes. Clearly label community maps, spawn-cycle tools, bugs, and workarounds as third-party or unverified when applicable.
 Do not write in dialect and do not describe an accent. The spoken voice is handled separately.
-The schematic map in the app is not Rockstar's map. Give landmark directions, not a claim that a pin is a surveyed coordinate.`;
+The parchment map in the app is an original schematic, not Rockstar's map. Give landmark directions, not a claim that a pin is a surveyed coordinate.`;
 
 function positiveInteger(value, fallback) {
   const parsed = Number.parseInt(value, 10);

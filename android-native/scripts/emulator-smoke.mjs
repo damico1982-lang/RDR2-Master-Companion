@@ -374,24 +374,31 @@ for (let attempt = 0; attempt < 15; attempt += 1) {
       show("secrets");
       const secrets = document.querySelectorAll("#secretResults .card").length;
       show("hidden");
+      const hiddenMap = document.getElementById("hiddenMap");
+      if (hiddenMap && hiddenMap.frontierZoomTo) hiddenMap.frontierZoomTo(4, 50, 45);
       const hidden = document.querySelectorAll("#hiddenList .card").length;
       const hiddenMarkers = document.querySelectorAll("#hiddenMarkers .map-marker").length;
       show("map");
+      const map = document.getElementById("fieldMap");
+      if (map && map.frontierZoomTo) map.frontierZoomTo(4, 50, 45);
       const markers = document.querySelectorAll("#mapMarkers .map-marker").length;
       const legendaryMarkers = document.querySelectorAll("#mapMarkers .map-marker.legendary").length;
       const secretMarkers = document.querySelectorAll("#mapMarkers .map-marker.secret").length;
+      const svg = document.querySelectorAll("#fieldMap svg").length;
+      if (map && map.frontierZoomTo) map.frontierZoomTo(1, 50, 50);
+      if (hiddenMap && hiddenMap.frontierZoomTo) hiddenMap.frontierZoomTo(1, 50, 50);
       return {
         title: document.title,
         href: location.href,
         guide, legendary, animals, secrets, hidden, hiddenMarkers,
-        markers, legendaryMarkers, secretMarkers,
+        markers, legendaryMarkers, secretMarkers, svg,
         bridge: typeof AndroidBridge
       };
     })()`,
     returnByValue: true
   });
   const counts = snapshot?.result?.value;
-  if (counts && counts.legendary >= 16 && counts.guide >= 10) break;
+  if (counts && counts.legendary >= 16 && counts.guide >= 10 && counts.svg >= 1 && counts.markers >= 40) break;
   await delay(1000);
 }
 
@@ -411,6 +418,7 @@ if (value.hiddenMarkers < 15) problems.push(`hidden markers ${value.hiddenMarker
 if (value.markers < 40) problems.push(`map markers ${value.markers}`);
 if (value.legendaryMarkers < 16) problems.push(`legendary markers ${value.legendaryMarkers}`);
 if (value.secretMarkers < 20) problems.push(`secret markers ${value.secretMarkers}`);
+if (value.svg < 1) problems.push("parchment map art missing");
 if (value.bridge !== "object") problems.push(`Android bridge ${value.bridge}`);
 if (consoleErrors.length) problems.push(`console errors: ${consoleErrors.join(" | ")}`);
 
@@ -440,6 +448,30 @@ async function show(view) {
 for (const view of ["ask", "voice", "guide", "legendary", "animals", "secrets", "hidden", "map", "updates", "settings", "coach"]) {
   await show(view);
 }
+
+async function mapShot(name, elementId, scale, x, y, detailName) {
+  const detail = await send("Runtime.evaluate", {
+    expression: `(() => {
+      const panelId = ${JSON.stringify(elementId === "hiddenMap" ? "hiddenView" : "mapView")};
+      document.querySelectorAll(".view").forEach(element => element.classList.remove("active"));
+      document.getElementById(panelId)?.classList.add("active");
+      const map = document.getElementById(${JSON.stringify(elementId)});
+      map?.scrollIntoView({ block: "center", behavior: "auto" });
+      if (map && map.frontierZoomTo) map.frontierZoomTo(${scale}, ${x}, ${y});
+      return map ? (map.dataset.detail || "missing") : "missing";
+    })()`,
+    returnByValue: true
+  });
+  const reported = detail?.result?.value || "";
+  console.log(name, reported);
+  if (reported !== detailName) problems.push(`${name} detail ${reported}`);
+  await delay(900);
+  shot(name);
+}
+await mapShot("map-zoom-0", "fieldMap", 1, 50, 50, "far");
+await mapShot("map-zoom-mid", "fieldMap", 2.5, 70, 55, "mid");
+await mapShot("map-zoom-close", "fieldMap", 5.6, 84, 65, "close");
+await mapShot("hidden-zoom-mid", "hiddenMap", 2.5, 55, 41, "mid");
 
 const health = await send("Runtime.evaluate", {
   expression: `fetch("https://frontier-guide-api.onrender.com/api/health", { cache: "no-store" }).then(async response => JSON.stringify({ status: response.status, body: await response.json() })).catch(error => JSON.stringify({ error: String(error) }))`,

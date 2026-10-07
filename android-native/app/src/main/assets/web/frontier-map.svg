@@ -1,0 +1,158 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" class="frontier-map" role="img" aria-label="Original parchment schematic of the frontier">
+  <defs>
+    <pattern id="hatch-MAPID" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(38)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#6d5338" stroke-width="0.85"/>
+    </pattern>
+    <pattern id="marsh-MAPID" width="10" height="10" patternUnits="userSpaceOnUse">
+      <path d="M2 8 C3 4 4 4 5 8 M6 8 C7 3 8 3 9 8" fill="none" stroke="#3f5c52" stroke-width="0.6"/>
+    </pattern>
+    <pattern id="grain-MAPID" width="18" height="18" patternUnits="userSpaceOnUse">
+      <circle cx="3" cy="4" r="0.6" fill="#8a6a42" opacity="0.35"/>
+      <circle cx="12" cy="11" r="0.5" fill="#8a6a42" opacity="0.28"/>
+    </pattern>
+  </defs>
+  <rect width="1000" height="1000" fill="#e7d4ae"/>
+  <rect width="1000" height="1000" fill="url(#grain-MAPID)"/>
+  <g class="layer-base">
+    <path fill="#d9c398" stroke="#5c432c" stroke-width="3" d="M170 78 L280 42 L430 34 L600 48 L760 36 L900 72 L970 140 L992 240 L958 330 L988 410 L978 520 L948 610 L972 720 L930 820 L850 910 L720 968 L560 930 L430 870 L300 940 L160 980 L60 920 L24 820 L36 720 L110 640 L90 520 L78 400 L118 260 L150 150 Z"/>
+    <path fill="#f4ecda" opacity="0.55" d="M150 150 L280 42 L430 34 L600 48 L760 36 L900 72 L940 130 L620 168 L360 150 Z"/>
+    <path fill="#8ea4a6" stroke="#5d7578" stroke-width="1.4" d="M430 610 L520 590 L600 630 L660 710 L630 800 L540 850 L450 800 L410 700 Z"/>
+    <path fill="#7f989c" stroke="#5d7578" stroke-width="1.2" d="M960 500 L1000 470 L1000 1000 L720 1000 L800 930 L880 860 L940 760 L960 660 L980 560 Z"/>
+    <ellipse cx="400" cy="148" rx="46" ry="26" fill="#8ea4a6" stroke="#5d7578" stroke-width="1"/>
+    <ellipse cx="236" cy="552" rx="28" ry="16" fill="#8ea4a6" stroke="#5d7578" stroke-width="1"/>
+    <ellipse cx="652" cy="262" rx="24" ry="14" fill="#8ea4a6" stroke="#5d7578" stroke-width="1"/>
+    <path fill="none" stroke="#6a543c" stroke-width="1.2" opacity="0.55" d="M150 210 L900 168"/>
+    <path fill="none" stroke="#6a543c" stroke-width="1.2" opacity="0.45" d="M400 190 L430 560"/>
+    <path fill="none" stroke="#6a543c" stroke-width="1.2" opacity="0.45" d="M560 540 L980 500"/>
+    <text class="region-label" x="500" y="125" text-anchor="middle" fill="#5a4030" font-family="Georgia, 'Times New Roman', serif" font-size="52" letter-spacing="8">AMBARINO</text>
+    <text class="region-label" x="250" y="430" text-anchor="middle" fill="#5a4030" font-family="Georgia, 'Times New Roman', serif" font-size="28" letter-spacing="2">WEST ELIZABETH</text>
+    <text class="region-label" x="700" y="330" text-anchor="middle" fill="#5a4030" font-family="Georgia, 'Times New Roman', serif" font-size="40" letter-spacing="4">NEW HANOVER</text>
+    <text class="region-label" x="760" y="760" text-anchor="middle" fill="#5a4030" font-family="Georgia, 'Times New Roman', serif" font-size="44" letter-spacing="6">LEMOYNE</text>
+    <text class="region-label" x="180" y="870" text-anchor="middle" fill="#5a4030" font-family="Georgia, 'Times New Roman', serif" font-size="28" letter-spacing="3">NEW AUSTIN</text>
+    <text x="520" y="740" text-anchor="middle" fill="#24383c" font-family="Georgia, 'Times New Roman', serif" font-size="22" letter-spacing="3">FLAT IRON LAKE</text>
+    <text x="900" y="940" text-anchor="middle" fill="#24383c" font-family="Georgia, 'Times New Roman', serif" font-size="13" letter-spacing="1.5">LANNAHECHEE</text>
+    <g fill="none" stroke="#5c432c" stroke-width="1.4" transform="translate(78 78)">
+      <circle r="16"/>
+      <path d="M0 -22 V22 M-22 0 H22"/>
+      <path d="M0 -10 L4 0 L0 10 L-4 0 Z" fill="#5c432c"/>
+      <text x="0" y="-26" text-anchor="middle" fill="#5c432c" font-size="9" font-family="Georgia, serif">N</text>
+    </g>
+  </g>
+  <g class="layer-close" fill="url(#hatch-MAPID)" opacity="0.42">
+    <path d="M150 150 L280 48 L460 40 L500 150 L320 190 Z"/>
+    <path d="M560 50 L760 40 L900 80 L860 170 L620 160 Z"/>
+    <path d="M90 300 L180 220 L260 280 L160 360 Z"/>
+    <path d="M700 180 L860 150 L920 250 L760 260 Z"/>
+    <path d="M40 760 L120 700 L80 820 Z"/>
+  </g>
+  <g class="layer-close" fill="none" stroke="#6d5338" stroke-width="0.8" opacity="0.55">
+    <path d="M180 120 C250 90 340 100 420 78"/>
+    <path d="M200 145 C280 112 370 118 450 100"/>
+    <path d="M620 90 C700 70 790 78 880 110"/>
+    <path d="M640 118 C730 100 820 112 900 140"/>
+    <path d="M110 280 C150 250 210 260 250 300"/>
+    <path d="M730 200 C800 180 860 190 910 230"/>
+    <path d="M480 360 C560 390 650 380 740 430"/>
+    <path d="M500 430 C590 450 680 440 760 490"/>
+    <path d="M760 600 C820 630 870 670 910 720"/>
+    <path d="M740 660 C810 690 870 730 920 780"/>
+    <path d="M200 700 C280 740 360 760 430 820"/>
+  </g>
+  <g class="layer-mid" fill="none" stroke="#6f8e90" stroke-width="3" stroke-linecap="round">
+    <path d="M300 280 C400 330 500 300 620 330 C740 352 820 340 900 372"/>
+    <path d="M760 390 C770 470 790 530 805 590 C820 660 720 730 640 780"/>
+    <path d="M180 430 C210 480 220 520 236 540"/>
+  </g>
+  <g class="layer-mid" fill="#6f8e90">
+    <text x="470" y="318" font-size="10" font-family="Georgia, serif" letter-spacing="1">DAKOTA RIVER</text>
+    <text x="760" y="500" font-size="10" font-family="Georgia, serif" letter-spacing="1">KAMASSA</text>
+    <text x="360" y="150" text-anchor="middle" font-size="10" font-family="Georgia, serif">ISABELLA</text>
+    <text x="236" y="530" text-anchor="middle" font-size="9" font-family="Georgia, serif">OWANJILA</text>
+  </g>
+  <g class="layer-mid" fill="url(#marsh-MAPID)">
+    <path d="M800 500 L900 490 L920 560 L820 570 Z" opacity="0.85"/>
+  </g>
+  <g class="layer-mid" fill="none" stroke="#4e3b2a" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M430 100 L500 220 L540 400"/>
+    <path d="M300 500 L340 450 L540 400 L660 460 L720 650 L855 660"/>
+    <path d="M540 400 L620 350 L800 240 L860 350 L855 660"/>
+    <path d="M300 500 L250 560 L340 640"/>
+    <path d="M340 640 L400 560 L680 560 L720 650"/>
+    <path d="M340 640 L260 700 L230 740 L140 785"/>
+    <path d="M720 650 L740 740"/>
+    <path d="M660 460 L760 400"/>
+    <path d="M800 240 L760 200"/>
+  </g>
+  <g class="layer-mid" fill="none" stroke="#3a3028" stroke-width="2.6" stroke-dasharray="3 8">
+    <path d="M300 540 L420 500 L540 450 L660 500 L730 680 L850 700"/>
+  </g>
+  <g class="layer-mid" fill="#4a3828" font-family="Georgia, 'Times New Roman', serif">
+    <g font-size="16" letter-spacing="1.4">
+      <text x="430" y="88" text-anchor="middle">COLTER</text>
+      <text x="540" y="388" text-anchor="middle">VALENTINE</text>
+      <text x="300" y="488" text-anchor="middle">STRAWBERRY</text>
+      <text x="340" y="628" text-anchor="middle">BLACKWATER</text>
+      <text x="660" y="444" text-anchor="middle">EMERALD</text>
+      <text x="720" y="638" text-anchor="middle">RHODES</text>
+      <text x="855" y="642" text-anchor="middle">SAINT DENIS</text>
+      <text x="800" y="228" text-anchor="middle">ANNESBURG</text>
+      <text x="860" y="338" text-anchor="middle">VAN HORN</text>
+      <text x="230" y="728" text-anchor="middle">ARMADILLO</text>
+      <text x="140" y="774" text-anchor="middle">TUMBLEWEED</text>
+      <text x="700" y="164" text-anchor="middle">WAPITI</text>
+      <text x="800" y="564" text-anchor="middle">LAGRAS</text>
+    </g>
+    <g font-size="9" fill="#6a543c" opacity="0.9">
+      <text x="400" y="168" text-anchor="middle">GRIZZLIES</text>
+      <text x="560" y="300" text-anchor="middle">CUMBERLAND</text>
+      <text x="820" y="300" text-anchor="middle">ROANOKE</text>
+      <text x="560" y="470" text-anchor="middle">HEARTLANDS</text>
+      <text x="680" y="600" text-anchor="middle">SCARLETT MEADOWS</text>
+      <text x="830" y="610" text-anchor="middle">BAYOU NWA</text>
+      <text x="220" y="470" text-anchor="middle">BIG VALLEY</text>
+      <text x="300" y="600" text-anchor="middle">GREAT PLAINS</text>
+      <text x="200" y="580" text-anchor="middle">TALL TREES</text>
+      <text x="250" y="800" text-anchor="middle">HENNIGAN'S STEAD</text>
+      <text x="150" y="710" text-anchor="middle">RIO BRAVO</text>
+      <text x="90" y="800" text-anchor="middle">GAPTOOTH</text>
+      <text x="860" y="530" text-anchor="middle">BLUEWATER</text>
+    </g>
+  </g>
+  <g class="layer-close" fill="#4a3424" stroke="#2c2118" stroke-width="0.4">
+    <g transform="translate(520 392)">
+      <rect x="0" y="0" width="10" height="7"/><rect x="12" y="1" width="8" height="6"/><rect x="-12" y="2" width="9" height="6"/><rect x="2" y="10" width="12" height="6"/>
+    </g>
+    <g transform="translate(286 494)">
+      <rect width="8" height="6"/><rect x="10" y="1" width="7" height="5"/><rect x="1" y="8" width="9" height="5"/>
+    </g>
+    <g transform="translate(328 632)">
+      <rect width="9" height="6"/><rect x="11" y="0" width="8" height="7"/><rect x="2" y="8" width="12" height="5"/>
+    </g>
+    <g transform="translate(706 642)">
+      <rect width="8" height="5"/><rect x="10" y="1" width="7" height="6"/><rect x="1" y="8" width="10" height="5"/>
+    </g>
+    <g transform="translate(812 628)">
+      <rect width="16" height="11"/><rect x="20" y="0" width="14" height="11"/><rect x="38" y="1" width="15" height="10"/><rect x="56" y="0" width="14" height="12"/>
+      <rect y="15" width="15" height="11"/><rect x="19" y="15" width="16" height="12"/><rect x="39" y="16" width="14" height="11"/><rect x="56" y="15" width="16" height="12"/>
+      <rect x="4" y="31" width="16" height="10"/><rect x="24" y="31" width="15" height="11"/><rect x="43" y="32" width="14" height="10"/><rect x="60" y="31" width="12" height="11"/>
+    </g>
+    <g transform="translate(788 232)">
+      <rect width="7" height="5"/><rect x="9" y="1" width="6" height="5"/><rect x="2" y="7" width="8" height="4"/>
+    </g>
+    <g transform="translate(848 344)">
+      <rect width="6" height="5"/><rect x="8" y="1" width="7" height="4"/>
+    </g>
+    <g transform="translate(648 452)">
+      <rect width="8" height="5"/><rect x="10" y="2" width="12" height="4"/><rect x="2" y="7" width="6" height="4"/>
+    </g>
+    <g transform="translate(214 732)">
+      <rect width="7" height="5"/><rect x="9" y="1" width="6" height="4"/>
+    </g>
+    <g transform="translate(126 778)">
+      <rect width="6" height="4"/><rect x="8" y="1" width="5" height="4"/>
+    </g>
+    <g transform="translate(418 96)">
+      <rect width="6" height="4"/><rect x="8" y="1" width="5" height="4"/>
+    </g>
+  </g>
+</svg>

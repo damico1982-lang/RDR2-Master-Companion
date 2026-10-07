@@ -10,8 +10,8 @@
     "weapon": "A rifle with express rounds is the practical choice. Improved arrows also work. Pelt quality is not graded, so the weapon does not change the pelt.",
     "ammo": "Express rifle rounds, or improved arrows. One clean kill is enough.",
     "reward": "Alligator Tooth Talisman at a Fence: Dead Eye core drains about 10% slower. It also takes Vintage Civil War Handcuffs and a Gold Jointed Bracelet. Fence price on IGN's trinket list is $40. The pelt can also be made into unique Trapper clothing. Every Trapper shares the same stock; this guide does not invent garment names. Gus's legendary-animal maps are Red Dead Online only.",
-    "x": 84,
-    "y": 74,
+    "x": 77,
+    "y": 59,
     "mode": "story",
     "confirmed": true
   },
@@ -27,7 +27,7 @@
     "ammo": "Express or regular rifle rounds. Any fatal shot keeps the legendary pelt.",
     "reward": "Beaver Tooth Trinket at a Fence: weapon degradation is about 10% slower. IGN lists the craft price at $18.25. The pelt is also used for unique Trapper clothing, shared by every Trapper.",
     "x": 74,
-    "y": 45,
+    "y": 38,
     "mode": "story",
     "confirmed": true
   },
@@ -42,8 +42,8 @@
     "weapon": "Rifle with express rounds, or improved arrows. Do not use a small sidearm if you can help it. Pelt quality is not graded.",
     "ammo": "Express rifle rounds or improved arrows.",
     "reward": "Bear Claw Talisman at a Fence: Health core drains about 10% slower. It also takes a Silver Chain Bracelet and a Quartz Chunk. IGN lists $34.75. The pelt is used for unique Trapper clothing.",
-    "x": 66,
-    "y": 27,
+    "x": 62,
+    "y": 23,
     "mode": "story",
     "confirmed": true
   },
@@ -154,8 +154,8 @@
     "weapon": "Rifle or repeater. A scoped shot is easier before it runs. Pelt quality is not graded.",
     "ammo": "Rifle or repeater rounds.",
     "reward": "Fox Claw Trinket at a Fence: Eagle Eye lasts about 5 seconds longer. IGN lists $23.50. The pelt is used for unique Trapper clothing.",
-    "x": 72,
-    "y": 64,
+    "x": 71,
+    "y": 58,
     "mode": "story",
     "confirmed": true
   },
@@ -202,8 +202,8 @@
     "weapon": "Rifle. It spooks at long range. Pelt quality is not graded.",
     "ammo": "High-velocity or express rifle rounds.",
     "reward": "Pronghorn Horn Trinket at a Fence: animal carcasses stowed on your horse no longer spoil. IGN lists $24.50. The pelt is used for unique Trapper clothing.",
-    "x": 16,
-    "y": 68,
+    "x": 17,
+    "y": 73,
     "mode": "story",
     "confirmed": true
   },
@@ -218,8 +218,8 @@
     "weapon": "Rifle with express rounds. Pelt quality is not graded.",
     "ammo": "Express rifle rounds.",
     "reward": "Tatanka Bison Horn Trinket at a Fence: melee damage taken is reduced by about 10%. IGN lists $16.75. Do not confuse this with the White Bison's Bison Horn Talisman. The pelt is used for unique Trapper clothing.",
-    "x": 26,
-    "y": 74,
+    "x": 28,
+    "y": 75,
     "mode": "story",
     "confirmed": true
   },

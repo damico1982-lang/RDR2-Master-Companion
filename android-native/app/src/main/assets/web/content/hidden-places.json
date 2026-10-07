@@ -9,8 +9,8 @@
     "enter": "Leave the horse, walk to the waterfall at the north end of the pool, and pass through the water into the cave. Deeper in, a slope on the right drops to a pit; a small hole in that wall leads toward the Poisonous Trail chamber. Keep a lantern and a manual save.",
     "contents": "A polluted cave stream, old camp remains, and cave paintings. The Poisonous Trail treasure (four gold bars) is in the hidden tunnel if you have followed that map chain from Cairn Lake. After all 20 dreamcatchers, the Ancient Arrowhead is in the eye of a bison painting in a side chamber. The pool itself is poisoned by the mine upstream.",
     "confirmed": true,
-    "x": 79,
-    "y": 43
+    "x": 76,
+    "y": 40
   },
   {
     "id": "strange-statues-cave",
@@ -48,8 +48,8 @@
     "enter": "Approach from the roads south of the site. The Murfree Brood use the caves and will shoot on sight before the gang moves here.",
     "contents": "A large cave network and a hostile camp. In Chapter 6 it becomes the Van der Linde camp. A Sparrow's Egg Orchid grows in the area. Do not expect a peaceful loot room.",
     "confirmed": true,
-    "x": 86,
-    "y": 36
+    "x": 78,
+    "y": 19
   },
   {
     "id": "cochinay",
@@ -61,8 +61,8 @@
     "enter": "This cave is the setting of the epilogue mission American Venom. This guide does not claim a free-roam treasure route into it before that mission.",
     "contents": "The cave camp used for the story's last mission. The reward is the mission itself, not a listed lockbox.",
     "confirmed": true,
-    "x": 32,
-    "y": 62
+    "x": 28,
+    "y": 58
   },
   {
     "id": "elysian-mine",
@@ -75,7 +75,7 @@
     "contents": "The closed mine that leaks into Elysian Pool. It explains the poisoned water. It is a landmark, not a treasure dungeon, and this guide does not claim an interior full of loot.",
     "confirmed": true,
     "x": 76,
-    "y": 38
+    "y": 36
   },
   {
     "id": "gaptooth-breach",
@@ -113,8 +113,8 @@
     "enter": "During Chapter 2, start the back-room robbery at the doctor's office and follow it downstairs.",
     "contents": "A hidden cellar and a wounded man the doctor is keeping there. The payoff is the robbery, not a separate treasure map.",
     "confirmed": true,
-    "x": 56,
-    "y": 46
+    "x": 55,
+    "y": 41
   },
   {
     "id": "rhodes-gunsmith",
@@ -126,8 +126,8 @@
     "enter": "Once Rhodes is part of your chapter, rob the gunsmith and open the locked cellar under the shop.",
     "contents": "A captive kept in the basement. The scene is the robbery discovery. This guide does not add a separate cash amount.",
     "confirmed": true,
-    "x": 74,
-    "y": 71
+    "x": 72,
+    "y": 65
   },
   {
     "id": "viking-tomb",
@@ -139,8 +139,8 @@
     "enter": "Ride the coast northeast of Annesburg and search the rocks for the burial mound. Climb in and inspect the remains.",
     "contents": "A Viking helmet and the Viking Hatchet.",
     "confirmed": true,
-    "x": 90,
-    "y": 28
+    "x": 86,
+    "y": 22
   },
   {
     "id": "window-rock",

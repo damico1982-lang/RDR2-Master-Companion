@@ -5,8 +5,8 @@
     "mode": "story",
     "title": "Limpany sheriff's office gold bar",
     "region": "New Hanover — south of Horseshoe Overlook",
-    "x": 53,
-    "y": 55,
+    "x": 51,
+    "y": 50,
     "directions": "Ride to the burned settlement of Limpany, enter the ruined sheriff's office, and inspect the lockbox beneath the desk.",
     "note": "Story Mode only. Sell the bar to a Fence after Fence services are unlocked. Do not confuse this with an Online gold spawn."
   },
@@ -49,8 +49,8 @@
     "mode": "story",
     "title": "Jack Hall Gang treasure — two gold bars",
     "region": "Ambarino — O'Creagh's Run",
-    "x": 69,
-    "y": 31,
+    "x": 67,
+    "y": 28,
     "directions": "Begin with Maximo near Flatneck Station, follow the Caliban's Seat and Cotorra Springs maps, then search beneath the rock on the small island in O'Creagh's Run.",
     "note": "Story Mode treasure chain. The final cache is not meant to be collected without progressing through its maps."
   },
@@ -71,8 +71,8 @@
     "mode": "story",
     "title": "Poisonous Trail treasure — four gold bars",
     "region": "New Hanover — Elysian Pool cave",
-    "x": 79,
-    "y": 43,
+    "x": 76,
+    "y": 40,
     "directions": "Start with the map in the Cairn Lake cabin, solve the Face Rock and serpent mound clues, then enter behind the Elysian Pool waterfall and navigate the cave to the final chamber.",
     "note": "Story Mode treasure chain. Bring a lantern and save before the cave because the drops and passages are easy to misread."
   },
@@ -137,8 +137,8 @@
     "mode": "online",
     "title": "Online treasure-map search areas",
     "region": "Red Dead Online — location changes with each map",
-    "x": 49,
-    "y": 63,
+    "x": 60,
+    "y": 44,
     "directions": "Open the treasure map from your satchel, travel to the highlighted search zone, then use Eagle Eye and listen for the treasure-chest sound while checking rocks, trees, ruins, and ledges.",
     "note": "Online maps award gold nuggets, cash, and items. The chest position is selected from multiple possible spots, so ask Frontier about the exact named map shown on your screen."
   },
@@ -148,8 +148,8 @@
     "mode": "online",
     "title": "Bounty boards — repeatable gold activity",
     "region": "Red Dead Online — towns and stations",
-    "x": 59,
-    "y": 47,
+    "x": 54,
+    "y": 40,
     "directions": "Use a bounty board after purchasing the Bounty Hunter license. Bring targets in alive when practical and follow the mission timer and objective text.",
     "note": "Bounty Hunter is the specialist role built around repeatable gold payouts. Limited-time bonuses can change, so use Live Updates for current rates."
   },
@@ -159,8 +159,8 @@
     "mode": "online",
     "title": "Collector jewelry and sets",
     "region": "Red Dead Online — rotating world locations",
-    "x": 82,
-    "y": 52,
+    "x": 70,
+    "y": 48,
     "directions": "Use the Collector role tools, search with Eagle Eye, and sell complete sets to Madam Nazar when practical. Ask Frontier to check the current cycle before starting a route.",
     "note": "Jewelry and collectible spawns rotate. This app should verify current information instead of pretending a static marker is always correct."
   },
@@ -170,8 +170,8 @@
     "mode": "online",
     "title": "Daily Challenges and Awards",
     "region": "Red Dead Online — Progress menu",
-    "x": 40,
-    "y": 29,
+    "x": 48,
+    "y": 42,
     "directions": "Open the Player menu or Progress menu, review today's general and role challenges, then group nearby objectives into one route. Reset eligible completed Awards for additional gold when available.",
     "note": "Daily objectives and event bonuses change. Frontier uses live search for the current list and should label any community-reported route information."
   }
