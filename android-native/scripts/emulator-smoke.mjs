@@ -449,24 +449,38 @@ for (const view of ["ask", "voice", "guide", "legendary", "animals", "secrets", 
   await show(view);
 }
 
+await send("Page.enable").catch(() => {});
 async function mapShot(name, elementId, scale, x, y, detailName) {
   const detail = await send("Runtime.evaluate", {
-    expression: `(() => {
+    expression: `(async () => {
       const panelId = ${JSON.stringify(elementId === "hiddenMap" ? "hiddenView" : "mapView")};
       document.querySelectorAll(".view").forEach(element => element.classList.remove("active"));
       document.getElementById(panelId)?.classList.add("active");
       const map = document.getElementById(${JSON.stringify(elementId)});
-      map?.scrollIntoView({ block: "center", behavior: "auto" });
+      map?.scrollIntoView({ block: "start", behavior: "auto" });
       if (map && map.frontierZoomTo) map.frontierZoomTo(${scale}, ${x}, ${y});
-      return map ? (map.dataset.detail || "missing") : "missing";
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const stage = map?.querySelector(".map-stage");
+      return JSON.stringify({ detail: map?.dataset.detail || "missing", transform: stage?.style.transform || "" });
     })()`,
+    awaitPromise: true,
     returnByValue: true
   });
-  const reported = detail?.result?.value || "";
-  console.log(name, reported);
+  let reported = "";
+  let transform = "";
+  try {
+    const parsed = JSON.parse(detail?.result?.value || "{}");
+    reported = parsed.detail || "";
+    transform = parsed.transform || "";
+  } catch {
+    reported = String(detail?.result?.value || "");
+  }
+  console.log(name, reported, transform);
   if (reported !== detailName) problems.push(`${name} detail ${reported}`);
-  await delay(900);
-  shot(name);
+  await delay(1600);
+  const captured = await send("Page.captureScreenshot", { format: "png" }).catch(() => null);
+  if (captured?.data) writeFileSync(`emulator-screenshots/${name}.png`, Buffer.from(captured.data, "base64"));
+  else shot(name);
 }
 await mapShot("map-zoom-0", "fieldMap", 1, 50, 50, "far");
 await mapShot("map-zoom-mid", "fieldMap", 2.5, 70, 55, "mid");
