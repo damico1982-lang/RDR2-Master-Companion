@@ -905,7 +905,6 @@ try { healthReport = JSON.parse(health?.result?.value || "{}"); } catch { health
 console.log("health", JSON.stringify(healthReport));
 if (healthReport.body?.authorized !== true) problems.push(`production health was not authorized: ${JSON.stringify(healthReport)}`);
 
-await reconnectDevtools();
 await show("ask");
 await sendRetry("Runtime.evaluate", {
   expression: `(() => { document.getElementById("question").value = "Where is the White Arabian? One sentence."; document.getElementById("askForm").requestSubmit(); return "sent"; })()`,
