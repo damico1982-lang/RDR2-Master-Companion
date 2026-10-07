@@ -720,6 +720,10 @@ const gestureStart = await sendRetry("Runtime.evaluate", {
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const map = node?.frontierMap;
     if (!map) return JSON.stringify({ error: "no map" });
+    document.getElementById("mapDetail")?._closeSheet?.();
+    document.getElementById("mapDetail")?.classList.remove("is-open");
+    const layers = document.querySelector("#mapView .map-sheet");
+    if (layers) layers.hidden = true;
     map.touchZoom?.enable?.();
     const zoom = map.getMinZoom() + 1;
     map.setView([-72, 88], zoom, { animate: false });
@@ -743,13 +747,12 @@ if (!gestureReport.error && gestureReport.width) {
   await delay(200);
   const cx = gestureReport.left + gestureReport.width / 2;
   const cy = gestureReport.top + gestureReport.height / 2;
-  await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: cx - 24, y: cy, id: 1 }, { x: cx + 24, y: cy, id: 2 }] });
-  for (let step = 1; step <= 6; step += 1) {
-    const spread = 24 + step * 22;
-    await delay(60);
-    await send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: cx - spread, y: cy, id: 1 }, { x: cx + spread, y: cy, id: 2 }] });
-  }
-  await delay(80);
+  await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: cx - 28, y: cy, id: 1 }, { x: cx + 28, y: cy, id: 2 }] });
+  await delay(40);
+  await send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: cx - 70, y: cy, id: 1 }, { x: cx + 70, y: cy, id: 2 }] });
+  await delay(40);
+  await send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: cx - 120, y: cy, id: 1 }, { x: cx + 120, y: cy, id: 2 }] });
+  await delay(40);
   await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   await delay(200);
   await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: cx, y: cy, id: 1 }] });
