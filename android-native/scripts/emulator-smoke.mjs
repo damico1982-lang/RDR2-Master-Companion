@@ -371,6 +371,7 @@ async function sendRetry(method, params = {}, timeoutMs = 30000) {
     } catch (error) {
       last = error;
       console.log(`devtools retry ${attempt + 1} after ${error.message}`);
+      await delay(1200);
       try {
         await reconnectDevtools();
       } catch (reconnectError) {
@@ -814,7 +815,7 @@ for (const [name, id, lat, lng] of places) {
       });
     })()`,
     returnByValue: true
-  });
+  }, 60000);
   let frameReport = {};
   try { frameReport = JSON.parse(frame?.result?.value || "{}"); } catch { frameReport = {}; }
   console.log("accuracy", name, JSON.stringify(frameReport));
