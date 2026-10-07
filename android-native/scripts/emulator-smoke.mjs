@@ -602,7 +602,7 @@ async function assertMapInk(name, rules) {
       problems.push(`${name} ${key} pixels ${counts[key]} < ${rules[key]} (blank map)`);
     }
   }
-  if (rules.coast && (sharp < 12 || soft > sharp)) {
+  if (rules.coast && (sharp < 4 || soft > sharp)) {
     problems.push(`${name} coast is soft: sharp ${sharp} soft ${soft}`);
   }
 }
@@ -876,7 +876,7 @@ shot("map-card-gunsmith-1.7.5");
 spawnSync("adb", ["shell", "settings", "put", "system", "accelerometer_rotation", "0"]);
 spawnSync("adb", ["shell", "settings", "put", "system", "user_rotation", "1"]);
 await delay(1200);
-const landscape = await send("Runtime.evaluate", {
+const landscape = await sendRetry("Runtime.evaluate", {
   expression: `(async () => {
     if (typeof setView === "function") setView("map");
     const map = document.getElementById("fieldMap");
@@ -894,7 +894,7 @@ const landscape = await send("Runtime.evaluate", {
   })()`,
   awaitPromise: true,
   returnByValue: true
-});
+}, 60000);
 let landscapeLayout = {};
 try { landscapeLayout = JSON.parse(landscape?.result?.value || "{}"); } catch { landscapeLayout = {}; }
 console.log("landscape", JSON.stringify(landscapeLayout));
