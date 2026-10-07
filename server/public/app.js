@@ -1136,6 +1136,12 @@ function showHiddenDetail(item) {
   addField(detail, "What's there", item.contents);
   addField(detail, "Grid", `Schematic ${item.x}, ${item.y}. X increases east and Y increases south.`);
   detail.appendChild(foundButton(item.id));
+  detail.classList.add("is-open");
+  detail.appendChild(actionButton("ghost compact map-detail-close", "Close card", () => {
+    state.selectedHiddenId = null;
+    detail.classList.remove("is-open");
+    renderHiddenMap();
+  }));
   highlightEntry(item.id);
 }
 
@@ -1735,6 +1741,12 @@ function showMapDetail(item) {
   actions.appendChild(foundButton(item.id));
   const grid = document.createElement("p");
   grid.textContent = `Schematic grid ${item.x}, ${item.y}. X increases east and Y increases south. This is a companion coordinate, not Rockstar's map.`;
+  actions.appendChild(actionButton("ghost compact map-detail-close", "Close card", () => {
+    state.selectedMapId = null;
+    detail.classList.remove("is-open");
+    renderMap();
+  }));
+  detail.classList.add("is-open");
   detail.append(title, body, grid, actions);
 }
 
@@ -2019,7 +2031,7 @@ function spreadPins(items, scale = 1) {
 function groupPins(items, scale, mapW, mapH) {
   const width = Math.max(1, mapW * scale);
   const height = Math.max(1, mapH * scale);
-  const limit = 32;
+  const limit = scale < 1.8 ? 10 : scale < 3.6 ? 14 : 18;
   const groups = [];
   for (const item of items) {
     const x = Number(item.x);
@@ -2132,6 +2144,7 @@ function reconcileModeSelection() {
       const body = document.createElement("p");
       body.textContent = "That pin does not match this play mode. Choose a marker that does.";
       detail.append(title, body);
+      detail.classList.remove("is-open");
     }
     renderMap();
   }
@@ -2146,6 +2159,7 @@ function reconcileModeSelection() {
       const body = document.createElement("p");
       body.textContent = "That place does not match this play mode.";
       detail.append(title, body);
+      detail.classList.remove("is-open");
     }
     renderHiddenMap();
     renderHiddenList();
@@ -2166,19 +2180,40 @@ function mountSchematicMap(viewport, onZoom) {
   let y = 0;
   let drag = null;
   let pinch = null;
+  let pinched = false;
+  let lastTapAt = 0;
+  let lastTapX = 0;
+  let lastTapY = 0;
   let drawnBucket = -1;
   let drawnDetail = "";
   let drawnSize = "";
   let fitted = false;
   const pointers = new Map();
-  const maxScale = 6.2;
+  const maxScale = 10;
   const sheetAspect = 3888 / 2944;
+  const frameOf = () => viewport.closest(".map-frame");
+  const spun = () => Boolean(frameOf()?.classList.contains("is-turned")) && window.innerWidth < window.innerHeight;
   const metrics = () => {
     const cw = viewport.clientWidth || 1;
     const ch = viewport.clientHeight || 1;
-    const expanded = Boolean(viewport.closest(".map-frame")?.classList.contains("is-expanded"));
+    const expanded = Boolean(frameOf()?.classList.contains("is-expanded"));
     if (!expanded) return { cw, ch, mw: cw, mh: ch, expanded };
-    return { cw, ch, mw: ch * sheetAspect, mh: ch, expanded };
+    const portrait = cw <= ch && !spun();
+    if (portrait) return { cw, ch, mw: cw, mh: cw / sheetAspect, expanded };
+    let mw = cw;
+    let mh = cw / sheetAspect;
+    if (mh > ch) {
+      mh = ch;
+      mw = mh * sheetAspect;
+    }
+    return { cw, ch, mw, mh, expanded };
+  };
+  const localPoint = (clientX, clientY) => {
+    const rect = viewport.getBoundingClientRect();
+    if (!spun()) return { x: clientX - rect.left, y: clientY - rect.top };
+    const vx = clientX - (rect.left + rect.width / 2);
+    const vy = clientY - (rect.top + rect.height / 2);
+    return { x: viewport.clientWidth / 2 + vy, y: viewport.clientHeight / 2 - vx };
   };
   const layoutStage = () => {
     const { mw, mh, expanded } = metrics();
@@ -2208,9 +2243,9 @@ function mountSchematicMap(viewport, onZoom) {
   const apply = () => {
     layoutStage();
     if (!fitted && scale === 1 && metrics().cw > 20) {
-      const { cw, mw } = metrics();
-      x = (cw - mw) / 2;
-      y = 0;
+      const box = metrics();
+      x = (box.cw - box.mw) / 2;
+      y = (box.ch - box.mh) / 2;
       fitted = true;
     }
     clampPan();
@@ -2242,10 +2277,11 @@ function mountSchematicMap(viewport, onZoom) {
     apply();
   };
   const centerSheet = () => {
-    const { cw, mw } = metrics();
+    const box = metrics();
     scale = 1;
-    x = (cw - mw) / 2;
-    y = 0;
+    x = (box.cw - box.mw) / 2;
+    y = (box.ch - box.mh) / 2;
+    fitted = true;
     apply();
   };
   viewport.frontierReflow = () => apply();
@@ -2292,6 +2328,67 @@ function mountSchematicMap(viewport, onZoom) {
       viewport.frontierReflow?.();
     });
   }
+  const orient = frame?.querySelector(".map-orient");
+  if (orient && !orient.dataset.bound) {
+    orient.dataset.bound = "1";
+    orient.addEventListener("click", async () => {
+      const on = frame.classList.toggle("is-turned");
+      orient.setAttribute("aria-pressed", on ? "true" : "false");
+      orient.textContent = on ? "Portrait" : "Landscape";
+      try {
+        if (on && screen.orientation?.lock) await screen.orientation.lock("landscape");
+        else screen.orientation?.unlock?.();
+      } catch {}
+      fitted = false;
+      scale = 1;
+      requestAnimationFrame(() => viewport.frontierReflow?.());
+    });
+  }
+  const search = frame?.querySelector(".map-search-input");
+  if (search && !search.dataset.bound) {
+    search.dataset.bound = "1";
+    const fly = () => {
+      const query = search.value.trim().toLowerCase();
+      if (!query) return;
+      const hidden = viewport.id === "hiddenMap";
+      const pool = hidden
+        ? state.hiddenPlaces.filter(modeMatches)
+        : state.mapLocations.filter(modeMatches);
+      const label = item => `${item.title || ""} ${item.name || ""}`.toLowerCase();
+      const item = pool.find(entry => label(entry) === query)
+        || pool.find(entry => label(entry).startsWith(query))
+        || pool.find(entry => `${label(entry)} ${(entry.region || "").toLowerCase()} ${(entry.category || "").toLowerCase()}`.includes(query));
+      if (!item) {
+        search.setCustomValidity("No matching place");
+        search.reportValidity();
+        return;
+      }
+      search.setCustomValidity("");
+      if (hidden) {
+        if (state.hiddenCategory !== "All" && item.category !== state.hiddenCategory) {
+          state.hiddenCategory = "All";
+          renderHiddenTags();
+        }
+        showHiddenDetail(item);
+      } else {
+        if (state.mapCategory !== "All" && item.category !== state.mapCategory) {
+          state.mapCategory = "All";
+          renderMapTags();
+        }
+        showMapDetail(item);
+      }
+      viewport.frontierZoomTo(4.2, item.x, item.y);
+    };
+    search.addEventListener("keydown", event => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      fly();
+    });
+  }
+  window.addEventListener("resize", () => {
+    if (scale === 1) fitted = false;
+    apply();
+  });
   const distance = () => {
     const points = [...pointers.values()];
     if (points.length < 2) return 0;
@@ -2301,46 +2398,67 @@ function mountSchematicMap(viewport, onZoom) {
     if (event.target.closest("button, a")) return;
     viewport.setPointerCapture?.(event.pointerId);
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    if (pointers.size === 1) drag = { x: event.clientX, y: event.clientY, ox: x, oy: y };
+    if (pointers.size === 1) drag = { x: event.clientX, y: event.clientY, ox: x, oy: y, moved: false };
     if (pointers.size === 2) {
-      const rect = viewport.getBoundingClientRect();
+      pinched = true;
       const points = [...pointers.values()];
-      const px = (points[0].x + points[1].x) / 2 - rect.left;
-      const py = (points[0].y + points[1].y) / 2 - rect.top;
-      pinch = { dist: distance() || 1, scale, wx: (px - x) / scale, wy: (py - y) / scale };
+      const mid = localPoint((points[0].x + points[1].x) / 2, (points[0].y + points[1].y) / 2);
+      pinch = { dist: distance() || 1, scale, wx: (mid.x - x) / scale, wy: (mid.y - y) / scale };
     }
   });
   viewport.addEventListener("pointermove", event => {
     if (!pointers.has(event.pointerId)) return;
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointers.size >= 2 && pinch) {
-      const rect = viewport.getBoundingClientRect();
       const points = [...pointers.values()];
-      const px = (points[0].x + points[1].x) / 2 - rect.left;
-      const py = (points[0].y + points[1].y) / 2 - rect.top;
+      const mid = localPoint((points[0].x + points[1].x) / 2, (points[0].y + points[1].y) / 2);
       scale = Math.min(maxScale, Math.max(1, pinch.scale * (distance() / pinch.dist)));
-      x = px - pinch.wx * scale;
-      y = py - pinch.wy * scale;
+      x = mid.x - pinch.wx * scale;
+      y = mid.y - pinch.wy * scale;
       apply();
       return;
     }
     if (drag) {
-      x = drag.ox + event.clientX - drag.x;
-      y = drag.oy + event.clientY - drag.y;
+      const mdx = event.clientX - drag.x;
+      const mdy = event.clientY - drag.y;
+      if (Math.hypot(mdx, mdy) > 8) drag.moved = true;
+      if (spun()) {
+        x = drag.ox + mdy;
+        y = drag.oy - mdx;
+      } else {
+        x = drag.ox + mdx;
+        y = drag.oy + mdy;
+      }
       apply();
     }
   });
   const endPointer = event => {
+    const moved = Boolean(drag?.moved);
     pointers.delete(event.pointerId);
     if (pointers.size < 2) pinch = null;
-    if (!pointers.size) drag = null;
+    if (!pointers.size) {
+      if (event.type === "pointerup" && !moved && !pinched && !event.target.closest("button, a, input")) {
+        const now = performance.now();
+        if (now - lastTapAt < 300 && Math.hypot(event.clientX - lastTapX, event.clientY - lastTapY) < 28) {
+          const point = localPoint(event.clientX, event.clientY);
+          zoomToward(Math.min(maxScale, Math.max(scale * 2.05, 2.4)), point.x, point.y);
+          lastTapAt = 0;
+        } else {
+          lastTapAt = now;
+          lastTapX = event.clientX;
+          lastTapY = event.clientY;
+        }
+      }
+      drag = null;
+      pinched = false;
+    }
   };
   viewport.addEventListener("pointerup", endPointer);
   viewport.addEventListener("pointercancel", endPointer);
   viewport.addEventListener("wheel", event => {
     event.preventDefault();
-    const rect = viewport.getBoundingClientRect();
-    zoomToward(event.deltaY > 0 ? scale / 1.12 : scale * 1.12, event.clientX - rect.left, event.clientY - rect.top);
+    const point = localPoint(event.clientX, event.clientY);
+    zoomToward(event.deltaY > 0 ? scale / 1.12 : scale * 1.12, point.x, point.y);
   }, { passive: false });
   apply();
 }

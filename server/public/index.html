@@ -18,7 +18,7 @@
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark" aria-hidden="true"><span>FG</span></div>
-        <div class="brand-copy"><strong>Frontier Guide</strong><small id="buildLabel">RDR2 Master Companion · 1.5.6</small></div>
+        <div class="brand-copy"><strong>Frontier Guide</strong><small id="buildLabel">RDR2 Master Companion · 1.5.7</small></div>
       </div>
       <button id="onlineDot" class="status-pill" aria-label="connection status"><span></span> Offline ready</button>
     </header>
@@ -196,6 +196,8 @@
         <div class="map-frame is-expanded">
           <div class="map-chrome">
             <button type="button" class="ghost compact map-filter-toggle" aria-expanded="false" aria-controls="mapTags">Filters</button>
+            <button type="button" class="ghost compact map-orient" aria-pressed="false">Landscape</button>
+            <input class="map-search-input" type="search" placeholder="Search a place" aria-label="Search the map" enterkeyhint="search" autocomplete="off" />
             <button type="button" class="ghost compact map-expand" aria-pressed="true">Close</button>
           </div>
           <div id="mapTags" class="tags map-drawer"></div>
@@ -204,7 +206,7 @@
             <div id="mapMarkers" class="map-markers"></div>
           </div>
         </div>
-        <p class="map-note">Original parchment drawn for this guide, not Rockstar’s, IGN’s, or GTABase’s map. Filters stay closed until you open them. Zoomed out, the landmass shows count badges. Zoom in and those badges open into individual pins.</p>
+        <p class="map-note">Original parchment drawn for this guide, not Rockstar’s, IGN’s, or GTABase’s map. The whole sheet is the default view. State names read from far away, counties at a middle zoom, and towns up close. Search flies to a place. Markers fade in as you zoom and stay in Filters.</p>
         <article id="mapDetail" class="card map-detail"><h3>Select a marker</h3><p>Choose a layer above, then tap a marker. Legendary and Secrets are their own layers.</p></article>
       </section>
 
@@ -237,6 +239,8 @@
         <div class="map-frame is-expanded">
           <div class="map-chrome">
             <button type="button" class="ghost compact map-filter-toggle" aria-expanded="false" aria-controls="hiddenTags">Filters</button>
+            <button type="button" class="ghost compact map-orient" aria-pressed="false">Landscape</button>
+            <input class="map-search-input" type="search" placeholder="Search a place" aria-label="Search hidden places" enterkeyhint="search" autocomplete="off" />
             <button type="button" class="ghost compact map-expand" aria-pressed="true">Close</button>
           </div>
           <div id="hiddenTags" class="tags map-drawer"></div>
@@ -245,7 +249,7 @@
             <div id="hiddenMarkers" class="map-markers"></div>
           </div>
         </div>
-        <p class="map-note">Same original parchment as the Field Map. Filters stay closed until you open them. The list under the map matches the pins.</p>
+        <p class="map-note">Same original parchment as the Field Map. Search flies to a hidden place. Markers fade in as you zoom. The list under the map matches the pins.</p>
         <article id="hiddenDetail" class="card map-detail"><h3>Select a hidden place</h3><p>Choose Cave, Waterfall, Mine, Underground, or Mountain, then tap a marker or a name in the list.</p></article>
         <div id="hiddenList" class="cards hidden-list"></div>
       </section>
@@ -308,7 +312,7 @@
   </dialog>
 
   <script>
-    window.FRONTIER_VERSION = "1.5.6";
+    window.FRONTIER_VERSION = "1.5.7";
     window.frontierSetVersion = function (version) {
       if (version) window.FRONTIER_VERSION = version;
       var label = document.getElementById("buildLabel");

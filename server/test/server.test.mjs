@@ -64,7 +64,7 @@ test("GET /api/health stays public for Render and reports readiness", async () =
       model: "gpt-6-luna",
       authRequired: true,
       authorized: false,
-      version: "1.5.6",
+      version: "1.5.7",
       tts: {
         enabled: true,
         model: "gpt-4o-mini-tts",
@@ -457,6 +457,24 @@ test("android assets match the web guide shell", () => {
     const android = readFileSync(new URL(`../../android-native/app/src/main/assets/web/${file}`, import.meta.url), "utf8");
     assert.equal(web, android, file);
   }
+});
+
+test("the parchment map names the states, counties, towns, and water", () => {
+  const map = readFileSync(new URL("../public/frontier-map.svg", import.meta.url), "utf8");
+  for (const label of [
+    "AMBARINO", "NEW HANOVER", "WEST ELIZABETH", "LEMOYNE", "NEW AUSTIN",
+    "Grizzlies West", "Grizzlies East", "Cumberland Forest", "Heartlands", "Roanoke Ridge",
+    "Scarlett Meadows", "Bayou Nwa", "Bluewater Marsh", "Big Valley", "Tall Trees", "Great Plains",
+    "Hennigan's Stead", "Cholla Springs", "Rio Bravo", "Gaptooth Ridge",
+    "Valentine", "Strawberry", "Blackwater", "Rhodes", "Saint Denis", "Annesburg",
+    "Van Horn Trading Post", "Emerald Ranch", "Armadillo", "Tumbleweed", "Colter", "Wapiti",
+    "Flat Iron Lake", "Lannahechee River", "San Luis River"
+  ]) {
+    assert.equal(map.includes(label), true, label);
+  }
+  assert.equal(map.includes("GTABase"), false);
+  assert.equal(map.includes("state-borders"), true);
+  assert.equal(map.includes("county-borders"), true);
 });
 
 test("coach JSON keeps only confirmed structured advice", () => {

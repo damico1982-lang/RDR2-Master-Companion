@@ -7949,32 +7949,69 @@ c-1 1 -2 3 -3 4 0 2 -4 6 -6 6 0 -1 -2 -1 -3 -2 -3 -3 -6 -2 -6 2 -1 2 -6 2
 3 -1 3 0 3 -1 0 -5 l-2 -3 3 -1 c4 -2 7 -1 5 2 -1 1 -1 4 -1 6 l-1 3 -3 1 c-2
 0 -3 -1 -4 -2z"/>
     </g>
-    <g fill="#5a4636" font-family="Liberation Serif, Georgia, Times New Roman, serif">
-      
-    <text class="region-label" x="2480" y="390" text-anchor="middle" font-size="78" letter-spacing="34">AMBARINO</text>
-    <text class="region-label" x="2620" y="1185" text-anchor="middle" font-size="64" letter-spacing="22">NEW HANOVER</text>
-    <text class="region-label region-narrow" x="1560" y="1520" text-anchor="middle" font-size="46" letter-spacing="8">WEST ELIZABETH</text>
-    <text class="region-label" x="3180" y="1760" text-anchor="middle" font-size="58" letter-spacing="20">LEMOYNE</text>
-    <text class="region-label" x="780" y="2420" text-anchor="middle" font-size="58" letter-spacing="18">NEW AUSTIN</text>
-    <text class="town-label" font-size="30" letter-spacing="3.5" x="2140" y="250" text-anchor="middle">COLTER</text>
-    <text class="town-label" font-size="30" letter-spacing="3.5" x="2680" y="470" text-anchor="middle">WAPITI</text>
-    <text class="town-label" font-size="30" letter-spacing="3.5" x="2360" y="1040" text-anchor="middle">VALENTINE</text>
-    <text class="town-label" font-size="30" letter-spacing="3.5" x="2860" y="1240" text-anchor="middle">EMERALD</text>
-    <text class="town-label" font-size="30" letter-spacing="3.5" x="1480" y="1540" text-anchor="middle">STRAWBERRY</text>
-    <text class="town-label" font-size="30" letter-spacing="3.5" x="1760" y="1980" text-anchor="middle">BLACKWATER</text>
-    <text class="town-label" font-size="30" letter-spacing="3.5" x="2760" y="1860" text-anchor="middle">RHODES</text>
-    <text class="town-label" font-size="30" letter-spacing="3.5" x="3280" y="1980" text-anchor="middle">SAINT DENIS</text>
-    <text class="town-label" font-size="30" letter-spacing="3.5" x="3320" y="560" text-anchor="middle">ANNESBURG</text>
-    <text class="town-label" font-size="30" letter-spacing="3.5" x="3520" y="980" text-anchor="middle">VAN HORN</text>
-    <text class="town-label" font-size="30" letter-spacing="3.5" x="3040" y="1620" text-anchor="middle">LAGRAS</text>
-    <text class="town-label" font-size="30" letter-spacing="3.5" x="1180" y="2280" text-anchor="middle">ARMADILLO</text>
-    <text class="town-label" font-size="30" letter-spacing="3.5" x="420" y="2460" text-anchor="middle">TUMBLEWEED</text>
-    <text class="water-label" font-size="34" letter-spacing="6" x="2300" y="2080" text-anchor="middle">FLAT IRON LAKE</text>
-    <text class="water-label" font-size="34" letter-spacing="6" x="1180" y="2580" text-anchor="middle">SAN LUIS RIVER</text>
-    <text class="water-label" font-size="34" letter-spacing="6" x="3520" y="1680" text-anchor="middle" transform="rotate(-72 3520 1680)">LANNAHECHEE RIVER</text>
-
+    <g class="state-borders" fill="none" stroke="#6a5340" stroke-width="3.2" stroke-linecap="round" stroke-dasharray="0.5 14" opacity="0.7">
+      <path d="M1760 700 C2140 780 2520 640 2980 740 C3340 820 3580 700 3740 640"/>
+      <path d="M1980 720 C1900 1040 2080 1360 1960 1640 C1900 1820 2060 1960 1980 2100"/>
+      <path d="M2060 1500 C2380 1400 2680 1560 3040 1460 C3320 1380 3560 1480 3720 1360"/>
+      <path d="M220 2180 C640 2080 1120 2220 1580 2120 C1860 2060 2080 2140 2260 2080"/>
+    </g>
+    <g fill="#4a3828" font-family="Liberation Serif, Georgia, Times New Roman, serif">
+      <text class="region-label" x="2480" y="340" text-anchor="middle" font-size="68" letter-spacing="32">AMBARINO</text>
+      <text class="region-label" x="2620" y="1120" text-anchor="middle" font-size="50" letter-spacing="16">NEW HANOVER</text>
+      <text class="region-label" x="1640" y="1260" text-anchor="middle" font-size="34" letter-spacing="5">WEST ELIZABETH</text>
+      <text class="region-label" x="3080" y="1920" text-anchor="middle" font-size="46" letter-spacing="14">LEMOYNE</text>
+      <text class="region-label" x="860" y="2500" text-anchor="middle" font-size="46" letter-spacing="12">NEW AUSTIN</text>
+      <text class="water-label" font-size="34" letter-spacing="8" x="2620" y="1760" text-anchor="middle">Flat Iron Lake</text>
+      <text class="water-label" font-size="30" letter-spacing="6" x="980" y="2580" text-anchor="middle">San Luis River</text>
+      <text class="water-label" font-size="30" letter-spacing="6" x="3620" y="1520" text-anchor="middle" transform="rotate(-68 3620 1520)">Lannahechee River</text>
     </g>
   </g>
-  <g class="layer-mid"></g>
-  <g class="layer-close"></g>
+  <g class="layer-mid">
+    <g class="county-borders" fill="none" stroke="#6a5340" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="0.4 12" opacity="0.48">
+      <path d="M2360 160 C2340 340 2460 520 2360 700"/>
+      <path d="M2140 760 C2080 980 2200 1180 2100 1400"/>
+      <path d="M3120 700 C3080 920 3200 1120 3140 1360"/>
+      <path d="M1500 1560 C1680 1520 1860 1620 2040 1560"/>
+      <path d="M1560 1640 C1520 1760 1620 1900 1560 2040"/>
+      <path d="M2920 1500 C2980 1640 2900 1780 3000 1920"/>
+      <path d="M3380 1400 C3440 1560 3360 1720 3460 1880"/>
+      <path d="M1280 2160 C1240 2320 1340 2480 1280 2640"/>
+      <path d="M620 2200 C580 2360 680 2520 600 2680"/>
+      <path d="M240 2520 C560 2460 900 2560 1240 2480"/>
+    </g>
+    <g fill="#4e3c2e" font-family="Liberation Serif, Georgia, Times New Roman, serif">
+      <text class="county-label" x="2100" y="520" text-anchor="middle" font-size="32">Grizzlies West</text>
+      <text class="county-label" x="3000" y="460" text-anchor="middle" font-size="32">Grizzlies East</text>
+      <text class="county-label" x="2080" y="960" text-anchor="middle" font-size="30">Cumberland Forest</text>
+      <text class="county-label" x="2460" y="1360" text-anchor="middle" font-size="32">Heartlands</text>
+      <text class="county-label" x="3340" y="820" text-anchor="middle" font-size="30">Roanoke Ridge</text>
+      <text class="county-label" x="2760" y="1280" text-anchor="middle" font-size="30">Scarlett Meadows</text>
+      <text class="county-label" x="3000" y="1580" text-anchor="middle" font-size="30">Bayou Nwa</text>
+      <text class="county-label" x="3380" y="1080" text-anchor="middle" font-size="28">Bluewater Marsh</text>
+      <text class="county-label" x="1780" y="1480" text-anchor="middle" font-size="30">Big Valley</text>
+      <text class="county-label" x="1500" y="1720" text-anchor="middle" font-size="30">Tall Trees</text>
+      <text class="county-label" x="1820" y="1880" text-anchor="middle" font-size="30">Great Plains</text>
+      <text class="county-label" x="1500" y="2220" text-anchor="middle" font-size="28">Hennigan's Stead</text>
+      <text class="county-label" x="1040" y="2260" text-anchor="middle" font-size="28">Cholla Springs</text>
+      <text class="county-label" x="720" y="2620" text-anchor="middle" font-size="28">Rio Bravo</text>
+      <text class="county-label" x="380" y="2340" text-anchor="middle" font-size="26">Gaptooth Ridge</text>
+    </g>
+  </g>
+  <g class="layer-close">
+    <g fill="#3f3126" font-family="Liberation Serif, Georgia, Times New Roman, serif">
+      <text class="town-label" font-size="28" letter-spacing="1.6" x="2140" y="400" text-anchor="middle">Colter</text>
+      <text class="town-label" font-size="28" letter-spacing="1.6" x="2720" y="640" text-anchor="middle">Wapiti</text>
+      <text class="town-label" font-size="30" letter-spacing="1.8" x="2220" y="1000" text-anchor="middle">Valentine</text>
+      <text class="town-label" font-size="26" letter-spacing="1.2" x="2780" y="1220" text-anchor="middle">Emerald Ranch</text>
+      <text class="town-label" font-size="28" letter-spacing="1.6" x="1540" y="1580" text-anchor="middle">Strawberry</text>
+      <text class="town-label" font-size="28" letter-spacing="1.6" x="1680" y="1980" text-anchor="middle">Blackwater</text>
+      <text class="town-label" font-size="28" letter-spacing="1.6" x="2860" y="1540" text-anchor="middle">Rhodes</text>
+      <text class="town-label" font-size="28" letter-spacing="1.6" x="3320" y="1860" text-anchor="middle">Saint Denis</text>
+      <text class="town-label" font-size="26" letter-spacing="1.4" x="3180" y="660" text-anchor="middle">Annesburg</text>
+      <text class="town-label" font-size="22" letter-spacing="0.8" x="3420" y="980" text-anchor="middle">Van Horn Trading Post</text>
+      <text class="town-label" font-size="24" letter-spacing="1.2" x="3020" y="1500" text-anchor="middle">Lagras</text>
+      <text class="town-label" font-size="28" letter-spacing="1.6" x="1160" y="2300" text-anchor="middle">Armadillo</text>
+      <text class="town-label" font-size="26" letter-spacing="1.4" x="420" y="2380" text-anchor="middle">Tumbleweed</text>
+    </g>
+  </g>
 </svg>
