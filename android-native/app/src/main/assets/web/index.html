@@ -18,7 +18,7 @@
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark" aria-hidden="true"><span>FG</span></div>
-        <div class="brand-copy"><strong>Frontier Guide</strong><small id="buildLabel">RDR2 Master Companion · 1.5.3</small></div>
+        <div class="brand-copy"><strong>Frontier Guide</strong><small id="buildLabel">RDR2 Master Companion · 1.5.4</small></div>
       </div>
       <button id="onlineDot" class="status-pill" aria-label="connection status"><span></span> Offline ready</button>
     </header>
@@ -193,10 +193,10 @@
 
       <section id="mapView" class="view panel content-panel map-panel">
         <div class="section-head map-section-head"><div><p class="eyebrow">FRONTIER FIELD MAP</p><h2>Treasure &amp; field pins</h2></div></div>
-        <div class="map-frame">
+        <div class="map-frame is-expanded">
           <div class="map-chrome">
             <button type="button" class="ghost compact map-filter-toggle" aria-expanded="false" aria-controls="mapTags">Filters</button>
-            <button type="button" class="ghost compact map-expand" aria-pressed="false">Expand</button>
+            <button type="button" class="ghost compact map-expand" aria-pressed="true">Close</button>
           </div>
           <div id="mapTags" class="tags map-drawer"></div>
           <div class="field-map" id="fieldMap" data-detail="far" data-scale="1" role="img" aria-label="Original parchment map with guide markers">
@@ -234,10 +234,10 @@
 
       <section id="hiddenView" class="view panel content-panel map-panel">
         <div class="section-head map-section-head"><div><p class="eyebrow">OFF THE ROAD</p><h2>Hidden Places</h2></div></div>
-        <div class="map-frame">
+        <div class="map-frame is-expanded">
           <div class="map-chrome">
             <button type="button" class="ghost compact map-filter-toggle" aria-expanded="false" aria-controls="hiddenTags">Filters</button>
-            <button type="button" class="ghost compact map-expand" aria-pressed="false">Expand</button>
+            <button type="button" class="ghost compact map-expand" aria-pressed="true">Close</button>
           </div>
           <div id="hiddenTags" class="tags map-drawer"></div>
           <div class="field-map" id="hiddenMap" data-detail="far" data-scale="1" role="img" aria-label="Original parchment map of hidden caves, mines, and mountain spots">
@@ -308,7 +308,7 @@
   </dialog>
 
   <script>
-    window.FRONTIER_VERSION = "1.5.3";
+    window.FRONTIER_VERSION = "1.5.4";
     window.frontierSetVersion = function (version) {
       if (version) window.FRONTIER_VERSION = version;
       var label = document.getElementById("buildLabel");

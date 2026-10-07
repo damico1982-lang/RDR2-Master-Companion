@@ -170,6 +170,10 @@ function setView(view) {
     button.classList.toggle("active", button.dataset.view === view);
   });
   panel?.scrollIntoView({ block: "start", behavior: "auto" });
+  if (view === "map" || view === "hidden") {
+    const map = document.getElementById(view === "map" ? "fieldMap" : "hiddenMap");
+    requestAnimationFrame(() => map?.frontierReflow?.());
+  }
 }
 
 $$('[data-view]').forEach(button => {
@@ -1101,6 +1105,22 @@ function renderHiddenTags() {
     };
     row.appendChild(button);
   }
+  const legend = document.createElement("div");
+  legend.className = "map-legend";
+  const places = hiddenItems();
+  assignMapNumbers(places);
+  for (const item of [...places].sort((a, b) => a.mapNumber - b.mapNumber)) {
+    const entry = document.createElement("button");
+    entry.type = "button";
+    entry.className = "legend-item";
+    entry.textContent = `${item.mapNumber}  ${item.name}`;
+    entry.onclick = () => {
+      $("#hiddenMap")?.frontierZoomTo?.(3.6, item.x, item.y);
+      showHiddenDetail(item);
+    };
+    legend.appendChild(entry);
+  }
+  row.appendChild(legend);
 }
 
 function showHiddenDetail(item) {
@@ -1120,7 +1140,9 @@ function showHiddenDetail(item) {
 }
 
 function renderHiddenMap() {
-  paintMarkers($("#hiddenMarkers"), hiddenItems(), state.selectedHiddenId, showHiddenDetail);
+  const items = hiddenItems();
+  assignMapNumbers(items);
+  paintMarkers($("#hiddenMarkers"), items, state.selectedHiddenId, showHiddenDetail);
 }
 
 function renderHiddenList() {
@@ -1669,6 +1691,22 @@ function renderMapTags() {
     };
     $("#mapTags").appendChild(button);
   }
+  const legend = document.createElement("div");
+  legend.className = "map-legend";
+  const numbered = visible.filter(item => state.mapCategory === "All" || item.category === state.mapCategory);
+  assignMapNumbers(numbered);
+  for (const item of [...numbered].sort((a, b) => a.mapNumber - b.mapNumber)) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "legend-item";
+    row.textContent = `${item.mapNumber}  ${item.title}`;
+    row.onclick = () => {
+      $("#fieldMap")?.frontierZoomTo?.(3.6, item.x, item.y);
+      showMapDetail(item);
+    };
+    legend.appendChild(row);
+  }
+  $("#mapTags").appendChild(legend);
 }
 
 function showMapDetail(item) {
@@ -1700,11 +1738,18 @@ function showMapDetail(item) {
   detail.append(title, body, grid, actions);
 }
 
+function assignMapNumbers(items) {
+  const ordered = [...items].sort((a, b) => (Number(a.y) - Number(b.y)) || (Number(a.x) - Number(b.x)) || String(a.title || a.name || "").localeCompare(String(b.title || b.name || "")));
+  ordered.forEach((item, index) => { item.mapNumber = index + 1; });
+  return ordered;
+}
+
 function renderMap() {
   const items = state.mapLocations.filter(item => {
     const categoryMatch = state.mapCategory === "All" || item.category === state.mapCategory;
     return categoryMatch && modeMatches(item);
   });
+  assignMapNumbers(items);
   paintMarkers($("#mapMarkers"), items, state.selectedMapId, showMapDetail);
 }
 
@@ -2041,11 +2086,11 @@ function paintMarkers(layer, items, activeId, onSelect) {
       };
     } else {
       const item = group.item;
-      number += 1;
       const active = activeId === item.id ? " active" : "";
       const foundClass = found.has(item.id) ? " found" : "";
       marker.className = `map-marker${markerKind(item)}${active}${foundClass}`;
-      label.textContent = String(number);
+      label.textContent = String(item.mapNumber || number + 1);
+      number += 1;
       const name = item.title || item.name;
       marker.title = name;
       marker.setAttribute("aria-label", name);

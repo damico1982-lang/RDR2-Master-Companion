@@ -491,7 +491,7 @@ a:focus-visible {
   align-items: center;
   justify-content: center;
   margin: 0;
-  background: #e3d2ae;
+  background: #d8c39c;
 }
 .map-chrome {
   position: absolute;
@@ -524,17 +524,17 @@ a:focus-visible {
 .field-map {
   position: relative;
   width: 100%;
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 1400 / 1060;
   overflow: hidden;
   border: 1px solid #6e5436;
   border-radius: 0;
-  background: #e3d2ae;
+  background: #d8c39c;
   box-shadow: inset 0 0 28px rgba(92, 64, 36, .08);
   touch-action: none;
 }
 .map-frame.is-expanded .field-map {
-  width: min(100vw, 100dvh);
-  height: min(100vw, 100dvh);
+  width: min(100vw, calc(100dvh * 1400 / 1060));
+  height: min(100dvh, calc(100vw * 1060 / 1400));
   flex: 0 0 auto;
   border: 0;
   aspect-ratio: auto;
@@ -551,19 +551,21 @@ a:focus-visible {
 .field-map[data-detail="far"] .layer-mid,
 .field-map[data-detail="far"] .layer-close { display: none; }
 .field-map[data-detail="mid"] .layer-close { display: none; }
-.field-map[data-detail="close"] .region-label { opacity: .16; }
-.region-label { font-family: Georgia, "Times New Roman", serif; font-size: 42px; fill: #5a4332; }
-.region-label.region-narrow { font-size: 22px; }
-.field-map[data-detail="mid"] .region-label { font-size: 24px; opacity: .4; }
-.field-map[data-detail="mid"] .region-label.region-narrow { font-size: 15px; }
-.town-label, .water-label, .creek, .subregion-label { font-family: Georgia, "Times New Roman", serif; stroke: #e6d4b0; stroke-width: 2.4px; paint-order: stroke fill; }
-.town-label { font-size: 18px; fill: #3c2c1e; letter-spacing: 1.3px; }
-.field-map[data-detail="mid"] .town-label { font-size: 13px; }
-.field-map[data-detail="close"] .town-label { font-size: 8px; }
-.water-label { font-size: 14px; fill: #24302c; letter-spacing: 1.4px; }
-.creek { font-size: 11px; fill: #2a3834; letter-spacing: 1px; }
-.subregion-label { font-size: 12px; fill: #6a543c; letter-spacing: 1.5px; }
-.field-map[data-detail="close"] .subregion-label { font-size: 8px; }
+.field-map[data-detail="close"] .region-label { font-size: 9px; opacity: .28; }
+.region-label { font-family: Georgia, "Times New Roman", serif; font-size: 13px; letter-spacing: .42em; fill: #6a5642; font-weight: 500; }
+.region-label.region-narrow { font-size: 9px; letter-spacing: .16em; }
+.field-map[data-detail="mid"] .region-label { font-size: 11px; opacity: .55; }
+.field-map[data-detail="mid"] .region-label.region-narrow { font-size: 8px; }
+.town-label, .water-label, .creek, .subregion-label { font-family: Georgia, "Times New Roman", serif; stroke: none; }
+.town-label { font-size: 8px; fill: #4e4034; letter-spacing: .14em; }
+.field-map[data-detail="mid"] .town-label { font-size: 8px; }
+.field-map[data-detail="close"] .town-label { font-size: 7px; }
+.water-label { font-size: 9px; fill: #5c5952; letter-spacing: .2em; }
+.creek { font-size: 8px; fill: #5c564c; letter-spacing: .14em; }
+.subregion-label { font-size: 8px; fill: #6a543c; letter-spacing: .14em; }
+.field-map[data-detail="close"] .subregion-label { font-size: 7px; }
+.map-legend { display: flex; flex-direction: column; gap: 1px; width: 100%; max-height: 220px; margin-top: 6px; overflow: auto; }
+.legend-item { width: 100%; border: 0; padding: 3px 2px; color: #3c2c1e; background: transparent; font: 700 11px/1.3 Georgia, "Times New Roman", serif; text-align: left; }
 .map-art { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
 .map-art svg { display: block; width: 100%; height: 100%; }
 .map-markers { position: absolute; inset: 0; z-index: 3; }
@@ -608,6 +610,20 @@ a:focus-visible {
 .map-marker.underground { border-color: #3e3558; }
 .map-marker.mountain { border-color: #6e3b32; }
 .field-map[data-detail="close"] .map-marker:not(.cluster) { width: 24px; height: 24px; }
+.map-marker,
+.map-marker.cluster,
+.map-marker.legendary,
+.map-marker.secret,
+.map-marker.cave,
+.map-marker.waterfall,
+.map-marker.mine,
+.map-marker.underground,
+.map-marker.mountain {
+  border-color: #1c1915;
+  background: #fff;
+  color: #111;
+  font-weight: 800;
+}
 .card.highlight { box-shadow: inset 0 0 0 1px #d19d45; }
 .card p strong { color: #f3e6cf; }
 .unconfirmed { color: #e0b15a !important; }
