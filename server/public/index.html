@@ -18,7 +18,7 @@
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark" aria-hidden="true"><span>FG</span></div>
-        <div class="brand-copy"><strong>Frontier Guide</strong><small id="buildLabel">RDR2 Master Companion · 1.4.2</small></div>
+        <div class="brand-copy"><strong>Frontier Guide</strong><small id="buildLabel">RDR2 Master Companion · 1.5.0</small></div>
       </div>
       <button id="onlineDot" class="status-pill" aria-label="connection status"><span></span> Offline ready</button>
     </header>
@@ -75,6 +75,11 @@
           <div><b>Screen Share</b><small>Use Android capture for direct visual help</small></div>
           <span class="quick-arrow">›</span>
         </button>
+        <button class="quick" data-view="coach">
+          <span class="quick-icon">◎</span>
+          <div><b>Live Coach</b><small>Camera on the TV, or Android screen capture</small></div>
+          <span class="quick-arrow">›</span>
+        </button>
         <button class="quick" data-view="map">
           <span class="quick-icon">⌖</span>
           <div><b>Field Map</b><small>Gold, treasure, legendaries, secrets &amp; services</small></div>
@@ -126,6 +131,40 @@
         <div class="notice voice-notice"><span>●</span><p>Frontier remembers this conversation and answers out loud. When the server voice has capacity, you hear a deep warm male voice. If that service is out of quota, the phone uses its deepest male voice instead. Hands-Free listens again only after the answer finishes. Tap Stop at any time.</p></div>
       </section>
 
+      <section id="coachView" class="view panel content-panel">
+        <div class="section-head">
+          <div><p class="eyebrow">LIVE GAMEPLAY</p><h2>Coach</h2><p class="section-sub">Point the phone at a TV, or share an Android game screen. Advice stays on this phone.</p></div>
+          <b id="coachState">Stopped</b>
+        </div>
+        <div class="coach-setup">
+          <label class="field"><span>Input</span><select id="coachSource"><option value="camera">Phone camera at the TV</option><option value="screen">Android screen capture</option></select></label>
+          <label class="field"><span>Platform</span><select id="coachPlatform"><option value="console">Console or TV</option><option value="pc">PC</option><option value="android">Android or Remote Play</option></select></label>
+          <label class="field"><span>Crop</span><select id="coachCrop"><option value="full">Full frame</option><option value="center">Center</option><option value="top">Top of the frame</option></select></label>
+          <label class="field"><span>Quality</span><select id="coachQuality"><option value="balanced">Balanced</option><option value="sharp">Sharper</option></select></label>
+          <label class="field"><span>Progress <i>optional</i></span><input id="coachProgress" placeholder="Chapter or role, only if you want it remembered" /></label>
+          <label class="field"><span>Goal <i>optional</i></span><input id="coachGoal" placeholder="What you are trying to do" /></label>
+          <label class="toggle"><input id="coachSpoiler" type="checkbox" /><span class="toggle-ui"></span><span>Allow future-story spoilers</span></label>
+          <label class="toggle"><input id="coachOverlay" type="checkbox" /><span class="toggle-ui"></span><span>Floating tip on this phone during screen share</span></label>
+        </div>
+        <div class="dialog-actions">
+          <button id="coachStart" class="send" type="button">Start Coach</button>
+          <button id="coachPause" class="ghost" type="button">Pause</button>
+          <button id="coachStop" class="ghost" type="button">Stop</button>
+          <button id="coachMute" class="ghost" type="button">Mute</button>
+          <button id="coachAsk" class="ghost" type="button">Ask now</button>
+          <button id="coachMore" class="ghost" type="button">More detail</button>
+          <button id="coachFlip" class="ghost" type="button">Flip camera</button>
+        </div>
+        <p id="coachMeta" class="muted">Stopped. Start Coach when the game is visible. The connection light is not a gameplay connection.</p>
+        <video id="coachVideo" class="coach-preview hidden" autoplay playsinline muted></video>
+        <img id="coachPreview" class="coach-preview hidden" alt="latest coach frame" />
+        <article class="card">
+          <h3 id="coachObjective">Waiting to start</h3>
+          <p id="coachNext">Tips show up here after a readable frame.</p>
+          <div id="coachTips"></div>
+        </article>
+      </section>
+
       <section id="askView" class="view active panel content-panel">
         <div class="section-head">
           <div><p class="eyebrow">LIVE COMPANION</p><h2>Ask anything</h2><p class="section-sub">Type it, show it, or attach the latest screen frame.</p></div>
@@ -147,14 +186,14 @@
           </div>
           <div class="composer-row">
             <label class="toggle"><input id="liveSearch" type="checkbox"/><span class="toggle-ui"></span><span>Use live web for current info</span></label>
-            <button class="send" type="submit">Ask Guide <span>→</span></button>
+            <button id="askSend" class="send" type="submit">Ask Guide <span>→</span></button>
           </div>
         </form>
       </section>
 
       <section id="mapView" class="view panel content-panel">
         <div class="section-head"><div><p class="eyebrow">FRONTIER FIELD MAP</p><h2>Treasure &amp; field pins</h2><p class="section-sub">Gold, services, legendary animals, and secrets on one schematic.</p></div></div>
-        <div class="notice"><span>●</span><p>This is an original schematic companion map, not a one-to-one copy of Rockstar’s game map. Legendary pins use a star. Secret pins use a diamond. Tap a marker for directions and, when it has one, the guide page.</p></div>
+        <div class="notice"><span>●</span><p>This is an original schematic companion map, not a copy of Rockstar’s game map. Pins use a calibrated grid: X increases east and Y increases south. Zoom, pan, and Reset separate overlapping pins. Legendary pins use a star. Secret pins use a diamond.</p></div>
         <div id="mapTags" class="tags"></div>
         <div class="field-map" id="fieldMap" role="img" aria-label="Schematic Red Dead Redemption 2 regions and guide markers">
           <div class="map-region region-west">NEW<br/>AUSTIN</div>
@@ -223,14 +262,20 @@
       <section id="settingsView" class="view panel content-panel">
         <div class="section-head"><div><p class="eyebrow">CONTROL CENTER</p><h2>Settings</h2><p class="section-sub">Connect AI, updates, and optional remote content.</p></div></div>
         <div class="settings-card">
-          <div class="setup-note"><b>Live AI setup</b><p>The hosted web app fills its own server URL automatically. In Android, use the HTTPS service URL only—do not add <code>/api</code> or an endpoint name.</p></div>
+          <div class="setup-note"><b>Live AI setup</b><p>Auto uses the hosted server. Custom keeps the URL you type. Offline only never calls the server. Do not put a password in the URL, and do not add <code>/api</code>.</p></div>
+          <div class="mode-row" id="serverMode" role="group" aria-label="Server mode">
+            <button type="button" class="mode active" data-server="auto">Auto</button>
+            <button type="button" class="mode" data-server="custom">Custom</button>
+            <button type="button" class="mode" data-server="offline">Offline</button>
+          </div>
           <label class="field"><span>AI server URL</span><input id="apiBase" placeholder="https://frontier-guide-api.onrender.com" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" /></label>
           <label class="field"><span>Server access key <i>optional</i></span><input id="apiToken" type="password" placeholder="Only needed if your server uses FRONTIER_CLIENT_TOKEN" autocomplete="off" /></label>
           <label class="field"><span>Remote content manifest <i>optional</i></span><input id="manifestUrl" placeholder="https://.../manifest.json" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" /></label>
-          <div class="settings-actions"><button id="saveSettings" class="send">Save &amp; test connection</button><button id="checkUpdates" class="ghost">Check guide update</button></div>
+          <div class="settings-actions"><button id="saveSettings" class="send" type="button">Save &amp; test connection</button><button id="checkUpdates" class="ghost" type="button">Check guide update</button><button id="applyUpdate" class="ghost" type="button">Apply guide update</button><button id="rollbackUpdate" class="ghost" type="button">Roll back guide update</button></div>
+          <p id="contentVersion" class="muted">Installed guide data: bundled pages</p>
           <div id="settingsMsg" class="muted settings-msg"></div>
         </div>
-        <div class="privacy-card"><span>◈</span><div><b>Privacy first</b><p>Camera and screen images are only sent when you ask a question with an image attached. Spoken answers use the server voice when it has capacity; the API key stays on the server. Android asks for screen-capture permission each session.</p></div></div>
+        <div class="privacy-card"><span>◈</span><div><b>Privacy first</b><p>Camera and screen images are sent only when you attach one to a question, or while Live Coach is watching. Spoken answers use the server voice when it has capacity; the API key stays on the server. Android asks for screen-capture permission each session.</p></div></div>
       </section>
     </main>
 
@@ -252,13 +297,14 @@
 
   <dialog id="screenDialog">
     <div class="dialog-head"><div><span class="dialog-kicker">ANDROID VISION</span><b>Screen Share</b></div><button id="closeScreen" aria-label="Close screen share">×</button></div>
+    <p id="screenStatus" class="screen-status">Not sharing.</p>
     <div id="screenHelp" class="screen-help"></div>
     <img id="screenPreview" class="screen-preview hidden" alt="latest screen capture"/>
-    <div class="dialog-actions"><button id="startNativeScreen" class="send">Start Android screen share</button><button id="useScreenFrame" class="ghost hidden">Use latest frame</button><button id="analyzeScreenFrame" class="ghost hidden">Analyze &amp; speak</button></div>
+    <div class="dialog-actions"><button id="startNativeScreen" class="send" type="button">Start Android screen share</button><button id="stopNativeScreen" class="ghost hidden" type="button">Stop sharing</button><button id="useScreenFrame" class="ghost hidden" type="button" disabled>Use latest frame</button><button id="analyzeScreenFrame" class="ghost hidden" type="button" disabled>Analyze &amp; speak</button></div>
   </dialog>
 
   <script>
-    window.FRONTIER_VERSION = "1.4.2";
+    window.FRONTIER_VERSION = "1.5.0";
     window.frontierSetVersion = function (version) {
       if (version) window.FRONTIER_VERSION = version;
       var label = document.getElementById("buildLabel");
@@ -297,6 +343,7 @@
       });
     });
   </script>
+  <script src="frontier-session.js"></script>
   <script src="app.js" onerror="frontierReport('app.js did not load. The page buttons have nothing to run.')"></script>
 </body>
 </html>

@@ -3,13 +3,14 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import cors from "cors";
 import express from "express";
 import { loadFieldNotes, relevantNotes } from "./field-notes.mjs";
+import { parseSseBuffer } from "./sse.mjs";
 
 const DEFAULT_MODEL = "gpt-6-luna";
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_TTS_MODEL = "gpt-4o-mini-tts";
 const DEFAULT_TTS_VOICE = "onyx";
 const DEFAULT_TTS_INSTRUCTIONS = "Speak as a deep, warm Black man in his thirties or forties. Low chest voice, unhurried, dry humor, direct. Sound like someone talking across a campfire, not an announcer, not a cartoon, and not a whisper.";
-const APP_VERSION = "1.4.2";
+const APP_VERSION = "1.5.0";
 const PUBLIC_DIR = fileURLToPath(new URL("./public/", import.meta.url));
 const PUBLIC_INDEX = fileURLToPath(new URL("./public/index.html", import.meta.url));
 
@@ -45,6 +46,31 @@ function validImageDataUrl(value) {
   if (typeof value !== "string") return false;
   if (!/^data:image\/(jpeg|jpg|png|webp|gif);base64,/i.test(value)) return false;
   return value.length <= 10_500_000;
+}
+
+export function parseCoachAnswer(text) {
+  const trimmed = String(text || "").trim().replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  try {
+    const data = JSON.parse(trimmed.slice(start, end + 1));
+    const tips = Array.isArray(data.tips) ? data.tips.slice(0, 3).map((tip, index) => ({
+      id: String(tip?.id || `tip-${index + 1}`).slice(0, 80),
+      text: String(tip?.text || "").slice(0, 400),
+      priority: Number(tip?.priority) || index + 1,
+      guideId: String(tip?.guideId || "").slice(0, 80)
+    })).filter(tip => tip.text) : [];
+    return {
+      observation: String(data.observation || "").slice(0, 600),
+      uncertainty: String(data.uncertainty || "").slice(0, 400),
+      nextAction: String(data.nextAction || data.next_action || "").slice(0, 400),
+      readable: data.readable !== false,
+      tips
+    };
+  } catch {
+    return null;
+  }
 }
 
 function extractText(response) {
@@ -221,7 +247,9 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
       type: "input_text",
       text: purpose === "updates"
         ? "Give me a concise current update scan for Red Dead Redemption 2 and Red Dead Online as of today. Cover official Rockstar announcements, patches, event changes, and service changes first. Then cover major actively reported issues or useful workarounds. Separate confirmed information from community reports and include dates when available."
-        : `${notesText}\n\nCurrent player question: ${question}`
+        : purpose === "coach"
+          ? `${notesText}\n\n${question}\n\nReturn one JSON object only, with no markdown. Keys: observation, uncertainty, nextAction, readable, tips. tips is an array of at most 3 objects with id, text, priority, and guideId. Describe only what is visible in the image or already in the field notes. If the frame is unreadable, set readable to false and do not invent a mission, location, or HUD value.`
+          : `${notesText}\n\nCurrent player question: ${question}`
     }];
 
     if (imageDataUrl) {
@@ -235,7 +263,7 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
         ...history.map(item => ({ role: item.role, content: item.content })),
         { role: "user", content }
       ],
-      max_output_tokens: purpose === "updates" ? 1_200 : 1_000,
+      max_output_tokens: purpose === "updates" ? 1_200 : purpose === "coach" ? 700 : 1_000,
       store: false
     };
 
@@ -306,22 +334,14 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
     let answer = "";
     let completed = null;
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const parts = buffer.split("\n\n");
-      buffer = parts.pop() || "";
-      for (const part of parts) {
-        const dataLine = part
-          .split("\n")
-          .filter(line => line.startsWith("data:"))
-          .map(line => line.slice(5).trim())
-          .join("");
-        if (!dataLine || dataLine === "[DONE]") continue;
+    const consume = (flush) => {
+      const parsed = parseSseBuffer(buffer, flush);
+      buffer = parsed.rest;
+      for (const message of parsed.events) {
+        if (!message.data || message.data === "[DONE]") continue;
         let event;
         try {
-          event = JSON.parse(dataLine);
+          event = JSON.parse(message.data);
         } catch {
           continue;
         }
@@ -332,7 +352,16 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
           completed = event.response;
         }
       }
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      consume(false);
     }
+    buffer += decoder.decode();
+    consume(true);
 
     const finalAnswer = (completed ? extractText(completed) : answer) || answer || "No answer returned.";
     writeSse(res, {
@@ -384,6 +413,48 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
     }
   });
 
+  app.post("/api/coach", rateLimit, requireClientToken, async (req, res) => {
+    const imageDataUrl = req.body?.imageDataUrl || null;
+    const mode = ["story", "online", "either"].includes(req.body?.mode) ? req.body.mode : "story";
+    const history = normalizeHistory(req.body?.history);
+    const sessionId = String(req.body?.sessionId || "").slice(0, 40);
+    const frameId = String(req.body?.frameId || "").slice(0, 40);
+    const platform = String(req.body?.platform || "unknown").slice(0, 40);
+    const progress = String(req.body?.progress || "").slice(0, 200);
+    const goal = String(req.body?.goal || "").slice(0, 200);
+    const spoiler = req.body?.spoiler === true;
+    if (!validImageDataUrl(imageDataUrl)) return res.status(400).json({ error: "Unsupported or oversized image." });
+    if (!imageDataUrl) return res.status(400).json({ error: "A gameplay frame is required." });
+    const question = [
+      "Read this single gameplay frame for Frontier Guide.",
+      `Mode: ${mode}. Platform: ${platform}.`,
+      progress ? `Player-confirmed progress: ${progress}.` : "Progress was not confirmed.",
+      goal ? `Current goal: ${goal}.` : "No specific goal was set.",
+      spoiler ? "The player allowed future-story spoilers." : "Do not reveal future story events.",
+      "If you cannot read the frame, say so. Do not invent unseen game state or exact coordinates."
+    ].join(" ");
+    try {
+      const created = await createResponse({ question, mode, imageDataUrl, history, purpose: "coach" });
+      const parsed = parseCoachAnswer(created.answer) || {
+        observation: "",
+        uncertainty: "The vision reply was not usable structured advice.",
+        nextAction: "Hold the frame steady on the game HUD and try again.",
+        readable: false,
+        tips: []
+      };
+      return res.json({
+        sessionId,
+        frameId,
+        capturedAt: req.body?.capturedAt || null,
+        ...parsed,
+        model: created.model
+      });
+    } catch (error) {
+      logger.error(error);
+      return res.status(error.status || 500).json({ error: error.message || "Server error." });
+    }
+  });
+
   app.post("/api/speak", rateLimit, requireClientToken, async (req, res) => {
     const text = String(req.body?.text || "").replace(/\s+/g, " ").trim();
     if (!text) return res.status(400).json({ error: "Text is required." });
@@ -424,7 +495,7 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
       name: "Frontier Guide API",
       ok: true,
       version: APP_VERSION,
-      endpoints: ["/api/health", "/api/ask", "/api/speak", "/api/live-update"]
+      endpoints: ["/api/health", "/api/ask", "/api/speak", "/api/coach", "/api/live-update"]
     });
   });
 

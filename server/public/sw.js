@@ -1,5 +1,5 @@
-const CACHE = "frontier-guide-v9";
-const ASSETS = ["./","index.html","styles.css","app.js","manifest.webmanifest","icon.svg","content/guide.json","content/map.json","content/legendaries.json","content/animals.json","content/secrets.json","content/hidden-places.json"];
+const CACHE = "frontier-guide-v11";
+const ASSETS = ["./","index.html","styles.css","app.js","frontier-session.js","manifest.webmanifest","icon.svg","content/guide.json","content/map.json","content/legendaries.json","content/animals.json","content/secrets.json","content/hidden-places.json"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)));
@@ -12,6 +12,7 @@ self.addEventListener("activate", event => {
 self.addEventListener("fetch", event => {
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
+  if (url.protocol !== "http:" && url.protocol !== "https:") return;
   if (url.origin === self.location.origin && url.pathname.startsWith("/api/")) return;
 
   event.respondWith(fetch(event.request).then(response => {
