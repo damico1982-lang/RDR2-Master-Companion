@@ -50,6 +50,12 @@ test("story hunts, the rare shotgun, and the white arabian use their published p
   const jack = map.find(item => item.id === "treasure-jack-hall");
   assert.ok(Math.hypot(jack.lat - (-37.3004), jack.lng - 141.8745) > 3, "Jack Hall is the island cache, not the hunter zone");
   assert.equal(map.some(item => /granite pass/i.test(item.title)), false);
+  const granite = read("hidden-places.json").find(item => item.id === "granite-pass");
+  assert.equal(granite.approximate, true);
+  assert.match(granite.sourceUrl, /gtaboss\.gg\/red-dead\/map\/derailed-train-gold-bar/);
+  assert.equal(granite.sourceLat, 73.45);
+  assert.equal(granite.sourceLng, 31.5);
+  assert.ok(Math.hypot(granite.lat - (-37.2391), granite.lng - 112.6067) < 0.01);
   assert.equal(map.some(item => /northern pike/i.test(item.title)), false);
   assert.equal(map.filter(item => item.category === "Fish").length, 14);
   assert.equal(map.filter(item => item.category === "Legendary").length, 16);

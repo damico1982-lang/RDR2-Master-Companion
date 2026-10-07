@@ -223,7 +223,14 @@
     "contents": "Two gold bars in the upright car. Story Mode only.",
     "confirmed": true,
     "approximate": true,
-    "accuracyNote": "No exact published coordinate. Shown in the list only."
+    "accuracyNote": "Approximate. GTA Boss publishes the derailed train at 73.45, 31.5 in its web-mercator tile frame. Converted into this frame from 14 shared landmarks (RMS 0.7118 map units).",
+    "lat": -37.2391,
+    "lng": 112.6067,
+    "sourceUrl": "https://www.gtaboss.gg/red-dead/map/derailed-train-gold-bar",
+    "sourceLat": 73.45,
+    "sourceLng": 31.5,
+    "x": 63.9811,
+    "y": 25.8605
   },
   {
     "id": "high-stakes-ledge",

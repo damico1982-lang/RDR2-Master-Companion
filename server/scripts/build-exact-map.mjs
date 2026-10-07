@@ -14,6 +14,7 @@ const trees = [
 const RDO = "https://github.com/jeanropke/RDOMap/blob/master/data";
 const KNOCKS = "https://github.com/the0neWhoKnocks/red-dead-redemption-2-map/blob/master/public/markers.default.json";
 const PASTEBIN = "https://pastebin.com/raw/YRdi3fRK";
+const GTABOSS_TRAIN = "https://www.gtaboss.gg/red-dead/map/derailed-train-gold-bar";
 
 const discoverables = JSON.parse(readFileSync(join(dataDir, "discoverables.json"), "utf8"));
 const shops = JSON.parse(readFileSync(join(dataDir, "rdo-shops.json"), "utf8"));
@@ -442,6 +443,59 @@ const secretUpdates = {
   "sec-pleasance": text.get("landmark_pleasance_house")
 };
 
+// GTA Boss draws markers on a web-mercator map bounded by
+// [[-71.5, -180], [85, 153]]. That rectangle is the same game sheet as
+// the RDOMap frame, so a mercator-normalized affine carries a published
+// point across. The residual is reported; it is not an exact RDOMap coordinate.
+function mercatorY(lat) {
+  const radians = lat * Math.PI / 180;
+  return Math.log(Math.tan(Math.PI / 4 + radians / 2));
+}
+const gbSouth = -71.5;
+const gbNorth = 85;
+const gbWest = -180;
+const gbEast = 153;
+const gbYs = mercatorY(gbSouth);
+const gbYn = mercatorY(gbNorth);
+function gtabossRow(lat, lng) {
+  return [
+    (lng - gbWest) / (gbEast - gbWest),
+    (mercatorY(lat) - gbYn) / (gbYs - gbYn),
+    1
+  ];
+}
+const gbControls = [
+  [73.03, 74.75, legend.get("animal_legendary_bear")],
+  [34.37, 92.94, legend.get("animal_legendary_bullgator")],
+  [52.05, -45.1, legend.get("animal_legendary_buck")],
+  [59.77, 101.26, legend.get("animal_legendary_beaver")],
+  [73.84, 118.62, shotgun],
+  [75.11, 53.73, pois.get("discoverable_strange_statues")],
+  [2.29, 56.21, pois.get("discoverable_braithwaites_secret")],
+  [43.43, 27.98, granger],
+  [73.17, 99.99, fromKnocks("Viking Hatchet")],
+  [77.64, 53.66, fromKnocks("Ancient Tomahawk")],
+  [56.33, 101.58, fromKnocks("Civil War Knife")],
+  [61.85, -23.29, fromKnocks("Semi-Auto Shotgun")],
+  [48.31, 20, burned],
+  [8.29, 59.84, gameToMap(1010.883, -1741.42)]
+];
+const gbRows = gbControls.map(([lat, lng]) => gtabossRow(lat, lng));
+const gbLatCoeff = solve(gbRows, gbControls.map(([, , point]) => point.lat));
+const gbLngCoeff = solve(gbRows, gbControls.map(([, , point]) => point.lng));
+function gtabossToRdo(lat, lng) {
+  const row = gtabossRow(lat, lng);
+  const dot = coeff => coeff[0] * row[0] + coeff[1] * row[1] + coeff[2] * row[2];
+  return { lat: dot(gbLatCoeff), lng: dot(gbLngCoeff), sourceLat: lat, sourceLng: lng };
+}
+const gbErrors = gbControls.map(([lat, lng, point]) => {
+  const mapped = gtabossToRdo(lat, lng);
+  return Math.hypot(mapped.lat - point.lat, mapped.lng - point.lng);
+});
+const gbRms = Math.sqrt(gbErrors.reduce((sum, error) => sum + error * error, 0) / gbErrors.length);
+const gtabossTrain = gtabossToRdo(73.45, 31.5);
+const graniteNote = `Approximate. GTA Boss publishes the derailed train at 73.45, 31.5 in its web-mercator tile frame. Converted into this frame from ${gbControls.length} shared landmarks (RMS ${round(gbRms)} map units).`;
+
 const hiddenUpdates = {
   "strange-statues-cave": { point: pois.get("discoverable_strange_statues"), sourceUrl: `${RDO}/discoverables.json` },
   "mount-shann-cave": { point: pois.get("discoverable_giant_remains"), sourceUrl: `${RDO}/discoverables.json` },
@@ -457,15 +511,16 @@ const hiddenUpdates = {
   "meteor-crater": { point: pois.get("discoverable_meteorite"), sourceUrl: `${RDO}/discoverables.json` },
   "viking-tomb": { point: fromKnocks("Viking Hatchet"), sourceUrl: KNOCKS, knocks: true },
   "window-rock": { point: pois.get("discoverable_strange_statues_painting"), sourceUrl: `${RDO}/discoverables.json`, approximate: true, note: "Approximate. This is the published strange-statues painting, which the guide associates with Window Rock, not a separate overhang survey." },
-  "high-stakes-ledge": { point: gameToMap(361.913, 1461.297), sourceUrl: PASTEBIN, game: [361.913, 1461.297], approximate: true, note: "Approximate. This is the published Fort Wallace coordinate. The cliff ledge is not a separate point in the source file." }
+  "high-stakes-ledge": { point: gameToMap(361.913, 1461.297), sourceUrl: PASTEBIN, game: [361.913, 1461.297], approximate: true, note: "Approximate. This is the published Fort Wallace coordinate. The cliff ledge is not a separate point in the source file." },
+  "granite-pass": { point: gtabossTrain, sourceUrl: GTABOSS_TRAIN, gtaboss: true, approximate: true, note: graniteNote }
 };
 
 function applyPoint(entry, update) {
   const point = update.point;
   const lat = update.shop ? point.x : (update.knocks ? point.lat : (update.game ? point.lat : point.lat));
   const lng = update.shop ? point.y : (update.knocks ? point.lng : (update.game ? point.lng : point.lng));
-  const sourceLat = update.knocks ? point.sourceLat : (update.game ? update.game[0] : lat);
-  const sourceLng = update.knocks ? point.sourceLng : (update.game ? update.game[1] : lng);
+  const sourceLat = update.gtaboss ? point.sourceLat : (update.knocks ? point.sourceLat : (update.game ? update.game[0] : lat));
+  const sourceLng = update.gtaboss ? point.sourceLng : (update.knocks ? point.sourceLng : (update.game ? update.game[1] : lng));
   entry.lat = round(lat);
   entry.lng = round(lng);
   entry.sourceUrl = update.sourceUrl;
@@ -486,7 +541,7 @@ function applyPoint(entry, update) {
 }
 
 const dropped = [
-  "Granite Pass train wreck: no exact coordinate in RDOMap, the community marker file, or the published coordinate list.",
+  "Granite Pass train wreck: no exact point in RDOMap or the community marker file. Pinned as approximate from the GTA Boss derailed-train marker after a web-mercator frame conversion.",
   "Red Chestnut Arabian, Warped Brindle Arabian, Perlino Andalusian, wild Nokota at Little Creek, Few Spotted Appaloosa, wild Hungarian Half-bred, Tennessee Walker herd, Amber Champagne Missouri Fox Trotter, Black Arabian night encounter: no exact point in the source files. The Nokota spawn table's nearest point is 37 map units from the Little Creek landmark, so it was not used.",
   "Calloway's Revolver, Flaco's Revolver, Midnight's Pistol, Otis Miller's revolver, Algernon's Revolver, Wicked Broken Knife, Hamish Lancaster: no exact free-roam point in the source files.",
   "Strawberry gunsmith: the RDOMap shop file has no Strawberry gunsmith.",
@@ -503,6 +558,8 @@ const fit = {
   }),
   shotgunVersusShack: round(Math.hypot(shotgun.lat - isolation.lat, shotgun.lng - isolation.lng)),
   whiteVersusIsabella: round(Math.hypot(white.lat - (-36.907), white.lng - 84.3357)),
+  gtabossRms: round(gbRms),
+  gtabossTrain: { sourceLat: 73.45, sourceLng: 31.5, lat: round(gtabossTrain.lat), lng: round(gtabossTrain.lng) },
   dropped
 };
 

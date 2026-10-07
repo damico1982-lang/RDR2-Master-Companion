@@ -81,8 +81,15 @@
   ],
   "shotgunVersusShack": 1.1764,
   "whiteVersusIsabella": 2.2445,
+  "gtabossRms": 0.7118,
+  "gtabossTrain": {
+    "sourceLat": 73.45,
+    "sourceLng": 31.5,
+    "lat": -37.2391,
+    "lng": 112.6067
+  },
   "dropped": [
-    "Granite Pass train wreck: no exact coordinate in RDOMap, the community marker file, or the published coordinate list.",
+    "Granite Pass train wreck: no exact point in RDOMap or the community marker file. Pinned as approximate from the GTA Boss derailed-train marker after a web-mercator frame conversion.",
     "Red Chestnut Arabian, Warped Brindle Arabian, Perlino Andalusian, wild Nokota at Little Creek, Few Spotted Appaloosa, wild Hungarian Half-bred, Tennessee Walker herd, Amber Champagne Missouri Fox Trotter, Black Arabian night encounter: no exact point in the source files. The Nokota spawn table's nearest point is 37 map units from the Little Creek landmark, so it was not used.",
     "Calloway's Revolver, Flaco's Revolver, Midnight's Pistol, Otis Miller's revolver, Algernon's Revolver, Wicked Broken Knife, Hamish Lancaster: no exact free-roam point in the source files.",
     "Strawberry gunsmith: the RDOMap shop file has no Strawberry gunsmith.",
