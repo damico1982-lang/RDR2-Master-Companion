@@ -292,7 +292,7 @@ let ws;
 function send(method, params = {}, timeoutMs = 30000) {
   const id = ++nextId;
   return new Promise((resolve, reject) => {
-    if (!ws || ws.readyState !== 1) {
+    if (!ws) {
       reject(new Error("DevTools websocket closed"));
       return;
     }
