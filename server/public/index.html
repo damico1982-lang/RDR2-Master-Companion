@@ -17,14 +17,15 @@
 
   <div class="app-shell">
     <header class="topbar">
-      <div class="brand">
+        <button class="brand" type="button" data-view="home">
         <div class="brand-mark" aria-hidden="true"><span>FG</span></div>
-        <div class="brand-copy"><strong>Frontier Guide</strong><small id="buildLabel">RDR2 Master Companion · 1.7.1</small></div>
-      </div>
+        <div class="brand-copy"><strong>Frontier Guide</strong><small id="buildLabel">RDR2 Master Companion · 1.7.2</small></div>
+      </button>
       <button id="onlineDot" class="status-pill" aria-label="connection status"><span></span> Offline ready</button>
     </header>
 
     <main>
+      <section id="homeView" class="view active">
       <section class="hero panel">
         <div class="hero-art" aria-hidden="true">
           <div class="sun"></div>
@@ -112,6 +113,7 @@
           <span class="quick-arrow">›</span>
         </button>
       </section>
+      </section>
 
       <section id="voiceView" class="view panel content-panel">
         <div class="section-head">
@@ -166,7 +168,7 @@
         </article>
       </section>
 
-      <section id="askView" class="view active panel content-panel">
+      <section id="askView" class="view panel content-panel">
         <div class="section-head">
           <div><p class="eyebrow">LIVE COMPANION</p><h2>Ask anything</h2><p class="section-sub">Type it, show it, or attach the latest screen frame.</p></div>
           <button id="clearChat" class="ghost compact">Clear</button>
@@ -266,7 +268,7 @@
 
       <section id="progressView" class="view panel content-panel">
         <div class="section-head"><div><p class="eyebrow">STEAM</p><h2>Progress</h2><p class="section-sub">Red Dead Redemption 2 achievements and hours. Pull down, or tap Refresh.</p></div><button id="refreshProgress" class="send compact" type="button">Refresh</button></div>
-        <div id="progressSummary" class="progress-summary"><p>Connect Steam in Settings to sync achievements.</p></div>
+        <div id="progressSummary" class="progress-summary progress-empty"><h3>Connect Steam</h3><p>Sign in from Settings to load Red Dead Redemption 2 achievements and hours. Nothing is shown here until a Steam account is linked.</p></div>
         <div id="progressList" class="cards"></div>
         <div id="progressPrompts" class="cards"></div>
       </section>
@@ -294,7 +296,7 @@
           <div id="settingsMsg" class="muted settings-msg"></div>
         </div>
         <div class="settings-card" id="steamCard">
-          <div class="setup-note"><b>Steam</b><p>Connect Steam signs in with Steam OpenID and stores your SteamID64. Achievements and hours come from the Steam Web API for Red Dead Redemption 2 (app 1174180). Your Steam profile game details must be public. The Steam Web API key stays on the server as STEAM_API_KEY. Until that key is set, Progress keeps the last copy saved on this phone.</p></div>
+          <div class="setup-note"><b>Steam</b><p>Connect Steam signs in with Steam OpenID and stores your SteamID64. Achievements and hours come from the Steam Web API for Red Dead Redemption 2 (app 1174180). Your Steam profile game details must be public. The Steam Web API key stays on the server as STEAM_API_KEY. Until that key is set, Progress stays empty. It does not keep a saved copy.</p></div>
           <p id="steamStatus" class="muted">Steam is not connected.</p>
           <div class="settings-actions"><button id="connectSteam" class="send" type="button">Connect Steam</button><button id="disconnectSteam" class="ghost" type="button">Disconnect</button></div>
         </div>
@@ -310,7 +312,7 @@
     </main>
 
     <nav class="bottom-nav" aria-label="Primary navigation">
-      <button data-view="ask" class="active"><span>✦</span>Ask</button>
+      <button data-view="ask"><span>✦</span>Ask</button>
       <button data-view="voice"><span>◉</span>Talk</button>
       <button data-view="guide"><span>⌖</span>Guide</button>
       <button data-view="progress"><span>▣</span>Progress</button>
@@ -335,7 +337,7 @@
   </dialog>
 
   <script>
-    window.FRONTIER_VERSION = "1.7.1";
+    window.FRONTIER_VERSION = "1.7.2";
     window.frontierSetVersion = function (version) {
       if (version) window.FRONTIER_VERSION = version;
       var label = document.getElementById("buildLabel");

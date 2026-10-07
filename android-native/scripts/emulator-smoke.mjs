@@ -456,36 +456,30 @@ for (const view of ["ask", "voice", "guide", "legendary", "animals", "secrets", 
 
 const progressText = await send("Runtime.evaluate", {
   expression: `(() => {
-    const data = {
-      hoursPlayed: 42.5,
-      percent: 11.8,
-      unlocked: 6,
-      total: 51,
-      fetchedAt: "2026-01-02T00:00:00.000Z",
-      achievements: [{
-        apiName: "ACH_BACK_IN_THE_MUD",
-        name: "Back in the Mud",
-        description: "Complete Chapter 1",
-        unlocked: true,
-        unlockTime: 1609459200,
-        icon: ""
-      }]
-    };
-    localStorage.setItem("fg_steam_progress", JSON.stringify(data));
-    localStorage.setItem("fg_server_mode", "offline");
+    localStorage.removeItem("fg_steam_progress");
+    localStorage.removeItem("fg_steam_id");
+    localStorage.setItem("fg_server_mode", "auto");
     if (typeof setView === "function") setView("progress");
-    else if (typeof renderSteamProgress === "function") renderSteamProgress(data);
-    return document.getElementById("progressView")?.innerText || "";
+    const text = document.getElementById("progressView")?.innerText || "";
+    const homeActive = document.getElementById("homeView")?.classList.contains("active");
+    return JSON.stringify({ text, homeActive });
   })()`,
   returnByValue: true
 });
-const progressBody = String(progressText?.result?.value || "");
+let progressBody = "";
+try {
+  const parsed = JSON.parse(progressText?.result?.value || "{}");
+  progressBody = parsed.text || "";
+  if (parsed.homeActive) problems.push("progress opened on top of the home list");
+} catch {
+  progressBody = String(progressText?.result?.value || "");
+}
 console.log("progress", progressBody.slice(0, 240));
-if (!progressBody.includes("Back in the Mud") || !progressBody.includes("42.5")) {
-  problems.push(`progress screen did not show mock Steam data: ${progressBody.slice(0, 180)}`);
+if (!progressBody.includes("Connect Steam") || /42\.5|Back in the Mud/.test(progressBody)) {
+  problems.push(`progress screen did not show the empty state: ${progressBody.slice(0, 180)}`);
 }
 await delay(400);
-shot("progress");
+shot("progress-empty-1.7.2");
 
 await send("Page.enable").catch(() => {});
 async function mapShot(name, elementId, scale, x, y, detailName) {
@@ -515,14 +509,175 @@ async function mapShot(name, elementId, scale, x, y, detailName) {
   }
   console.log(name, JSON.stringify(parsed));
   if (reported !== detailName) problems.push(`${name} detail ${reported}`);
-  await delay(1600);
-  const captured = await send("Page.captureScreenshot", { format: "png" }).catch(() => null);
-  if (captured?.data) writeFileSync(`emulator-screenshots/${name}.png`, Buffer.from(captured.data, "base64"));
-  else shot(name);
+  await delay(900);
+  shot(name);
+  return parsed;
 }
-await mapShot("map-zoom-0", "fieldMap", 1, 50, 50, "far");
-await mapShot("map-zoom-mid", "fieldMap", 2.5, 70, 55, "mid");
-await mapShot("map-zoom-close", "fieldMap", 5.6, 84, 65, "close");
+await mapShot("map-full-1.7.2", "fieldMap", 1, 50, 50, "far");
+await mapShot("map-mid-1.7.2", "fieldMap", 2.5, 70, 55, "mid");
+await mapShot("map-close-1.7.2", "fieldMap", 4.2, 72, 46, "close");
+
+const layoutReport = await send("Runtime.evaluate", {
+  expression: `(() => {
+    const map = document.getElementById("fieldMap");
+    const nav = document.querySelector(".bottom-nav");
+    const navRect = nav.getBoundingClientRect();
+    const tops = [...nav.querySelectorAll("button")].map(button => button.getBoundingClientRect().top);
+    const zoomOut = document.querySelector("#mapView .map-zoom-out")?.getBoundingClientRect();
+    const recenter = document.querySelector("#mapView .map-recenter")?.getBoundingClientRect();
+    const image = map?.querySelector(".leaflet-image-layer")?.getBoundingClientRect();
+    const mapRect = map?.getBoundingClientRect();
+    const audit = window.auditMapLabels?.("fieldMap") || { overlaps: ["missing"], clipped: ["missing"] };
+    const covers = Boolean(image && mapRect && image.left <= mapRect.left + 2 && image.right >= mapRect.right - 2 && image.top <= mapRect.top + 2 && image.bottom >= mapRect.bottom - 2);
+    return JSON.stringify({
+      tops, navHeight: navRect.height, navTop: navRect.top,
+      zoomOutBottom: zoomOut?.bottom, recenterBottom: recenter?.bottom,
+      covers, audit, buttons: nav.querySelectorAll("button").length
+    });
+  })()`,
+  returnByValue: true
+});
+let layout = {};
+try { layout = JSON.parse(layoutReport?.result?.value || "{}"); } catch { layout = {}; }
+console.log("layout", JSON.stringify(layout));
+const topSpread = layout.tops?.length ? Math.max(...layout.tops) - Math.min(...layout.tops) : 99;
+if (layout.buttons !== 6 || topSpread > 8 || !(layout.navHeight < 90)) problems.push(`nav is not one row: ${JSON.stringify(layout.tops)} h=${layout.navHeight}`);
+if (!layout.covers) problems.push("parchment does not cover the map viewport");
+if (layout.audit?.clipped?.length || layout.audit?.overlaps?.length) problems.push(`close labels ${JSON.stringify(layout.audit)}`);
+if (!(layout.zoomOutBottom <= layout.navTop + 1) || !(layout.recenterBottom <= layout.navTop + 1)) {
+  problems.push(`map controls overlap the nav: ${JSON.stringify(layout)}`);
+}
+
+await send("Runtime.evaluate", {
+  expression: `(() => { document.querySelector("#mapView .map-layers-toggle")?.click(); return "layers"; })()`,
+  returnByValue: true
+});
+await delay(500);
+shot("map-controls-1.7.2");
+await send("Runtime.evaluate", {
+  expression: `(() => {
+    document.querySelector("#mapView .map-layers-toggle")?.click();
+    const marker = document.querySelector("#mapMarkers .map-marker, #mapMarkers .map-cluster, #mapMarkers .map-dot");
+    marker?.click();
+    return marker ? "card" : "no-marker";
+  })()`,
+  returnByValue: true
+});
+await delay(600);
+const cardReport = await send("Runtime.evaluate", {
+  expression: `(() => {
+    const card = document.getElementById("mapDetail")?.getBoundingClientRect();
+    const nav = document.querySelector(".bottom-nav")?.getBoundingClientRect();
+    return JSON.stringify({ open: document.getElementById("mapDetail")?.classList.contains("is-open"), cardBottom: card?.bottom, navTop: nav?.top, cardHeight: card?.height });
+  })()`,
+  returnByValue: true
+});
+let cardLayout = {};
+try { cardLayout = JSON.parse(cardReport?.result?.value || "{}"); } catch { cardLayout = {}; }
+console.log("card", JSON.stringify(cardLayout));
+if (!cardLayout.open || !(cardLayout.cardBottom <= cardLayout.navTop + 2) || !(cardLayout.cardHeight > 40)) {
+  problems.push(`marker card is not above the nav: ${JSON.stringify(cardLayout)}`);
+}
+shot("map-card-1.7.2");
+
+spawnSync("adb", ["shell", "settings", "put", "system", "accelerometer_rotation", "0"]);
+spawnSync("adb", ["shell", "settings", "put", "system", "user_rotation", "1"]);
+await delay(1200);
+const landscape = await send("Runtime.evaluate", {
+  expression: `(async () => {
+    if (typeof setView === "function") setView("map");
+    const map = document.getElementById("fieldMap");
+    map?.frontierReflow?.();
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    map?.frontierZoomTo?.(2.5, 74, 58);
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const marker = document.querySelector("#mapMarkers .map-marker, #mapMarkers .map-cluster, #mapMarkers .map-dot");
+    marker?.click();
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    const card = document.getElementById("mapDetail")?.getBoundingClientRect();
+    const nav = document.querySelector(".bottom-nav")?.getBoundingClientRect();
+    const tops = [...document.querySelectorAll(".bottom-nav button")].map(button => button.getBoundingClientRect().top);
+    return JSON.stringify({ open: document.getElementById("mapDetail")?.classList.contains("is-open"), cardBottom: card?.bottom, navTop: nav?.top, cardHeight: card?.height, tops, navHeight: nav?.height });
+  })()`,
+  awaitPromise: true,
+  returnByValue: true
+});
+let landscapeLayout = {};
+try { landscapeLayout = JSON.parse(landscape?.result?.value || "{}"); } catch { landscapeLayout = {}; }
+console.log("landscape", JSON.stringify(landscapeLayout));
+const landscapeSpread = landscapeLayout.tops?.length ? Math.max(...landscapeLayout.tops) - Math.min(...landscapeLayout.tops) : 99;
+if (!landscapeLayout.open || !(landscapeLayout.cardBottom <= landscapeLayout.navTop + 2)) {
+  problems.push(`landscape card is behind the nav: ${JSON.stringify(landscapeLayout)}`);
+}
+if (landscapeSpread > 8) problems.push(`landscape nav wrapped: ${JSON.stringify(landscapeLayout.tops)}`);
+await delay(700);
+shot("map-landscape-card-1.7.2");
+spawnSync("adb", ["shell", "settings", "put", "system", "user_rotation", "0"]);
+await delay(800);
+
+await show("hidden");
+shot("hidden-1.7.2");
+await show("home");
+shot("home-1.7.2");
+const homeReport = await send("Runtime.evaluate", {
+  expression: `(() => {
+    const home = document.getElementById("homeView");
+    const progress = document.getElementById("progressView");
+    return JSON.stringify({
+      home: Boolean(home?.classList.contains("active")),
+      progress: Boolean(progress?.classList.contains("active")),
+      grid: Boolean(home?.querySelector(".quick-grid"))
+    });
+  })()`,
+  returnByValue: true
+});
+let homeLayout = {};
+try { homeLayout = JSON.parse(homeReport?.result?.value || "{}"); } catch { homeLayout = {}; }
+if (!homeLayout.home || homeLayout.progress || !homeLayout.grid) problems.push(`home screen ${JSON.stringify(homeLayout)}`);
+
+await show("settings");
+shot("settings-steam-1.7.2");
+const pillReport = await send("Runtime.evaluate", {
+  expression: `(() => document.getElementById("onlineDot")?.innerText || "")()`,
+  returnByValue: true
+});
+const pill = String(pillReport?.result?.value || "");
+console.log("pill", pill);
+if (/Offline only|Server needs API key/i.test(pill)) problems.push(`status pill ${pill}`);
+const steamCopy = await send("Runtime.evaluate", {
+  expression: `(() => document.getElementById("steamCard")?.innerText || "")()`,
+  returnByValue: true
+});
+if (!String(steamCopy?.result?.value || "").includes("Connect Steam")) problems.push("settings steam card missing");
+
+const places = [
+  ["white-arabian", -37.6706, 82.2251],
+  ["jack-hall", -40.8291, 136.8836],
+  ["bull-gator", -75.6282, 144.9287],
+  ["valentine", -53.602, 108.3971],
+  ["saint-denis", -86.3787, 152.6896],
+  ["blackwater", -82.9581, 99.7447],
+  ["rhodes", -83.6534, 130.6434],
+  ["strawberry", -70.03, 84.3196],
+  ["armadillo", -104.3897, 53.4547],
+  ["tumbleweed", -109.3272, 26.8317]
+];
+await send("Runtime.evaluate", {
+  expression: `(() => { if (typeof setView === "function") setView("map"); window.frontierShowAccuracy?.(true); return "tiles"; })()`,
+  returnByValue: true
+});
+for (const [name, lat, lng] of places) {
+  await send("Runtime.evaluate", {
+    expression: `(() => {
+      const map = document.getElementById("fieldMap")?.frontierMap;
+      map?.setView([${lat}, ${lng}], Math.min(map.getMaxZoom(), (document.getElementById("fieldMap")._fitZoom || 1) + 2.4), { animate: false });
+      return "ok";
+    })()`,
+    returnByValue: true
+  });
+  await delay(900);
+  shot(`accuracy-part-${name}`);
+}
 await mapShot("hidden-zoom-mid", "hiddenMap", 2.5, 55, 41, "mid");
 
 const gestureStart = await send("Runtime.evaluate", {

@@ -2059,9 +2059,11 @@ async function checkStatus(showMessage = false) {
       return false;
     }
     if (!data.configured) {
-      setConnectionState("warning", "Server needs API key");
-      if (showMessage) $("#settingsMsg").textContent = "Server found, but OPENAI_API_KEY is not configured on the host.";
-      return false;
+      setConnectionState("", "Offline ready");
+      const status = $("#onlineDot");
+      if (status) status.title = "The guide is ready. Live answers stay off until the server has an AI key.";
+      if (showMessage) $("#settingsMsg").textContent = "Server found. OPENAI_API_KEY is not configured, so live answers stay off. The guide and map still work.";
+      return true;
     }
 
     setConnectionState("online", "AI connected");
@@ -2332,7 +2334,15 @@ function foundButton(id) {
 }
 
 const MAP_FRAME = typeof L === "undefined" ? null : L.latLngBounds([-144, 0], [0, 176]);
-const ACCURACY_MAP = new URLSearchParams(location.search).get("accuracy") === "1";
+function accuracyRequested() {
+  try {
+    if (new URLSearchParams(location.search).get("accuracy") === "1") return true;
+    return localStorage.getItem("fg_accuracy") === "1";
+  } catch {
+    return false;
+  }
+}
+const ACCURACY_MAP = accuracyRequested();
 const STATE_SPAN = { AMBARINO: 52, "NEW HANOVER": 44, "WEST ELIZABETH": 40, LEMOYNE: 30, "NEW AUSTIN": 40 };
 const WATER_NAMES = new Set(["Flat Iron Lake", "San Luis River", "Lannahechee River"]);
 const TOWN_NAMES = new Set(["Colter", "Wapiti", "Valentine", "Emerald Ranch", "Strawberry", "Blackwater", "Rhodes", "Saint Denis", "Annesburg", "Van Horn Trading Post", "Lagras", "Armadillo", "Tumbleweed"]);
@@ -2395,10 +2405,10 @@ function layoutMapLabels(viewport) {
       skipped.push(`${entry.text}:outside`);
       continue;
     }
-    const cap = width * (entry.kind === "state" ? 0.4 : 0.32);
+    const cap = entry.kind === "town" ? 13 : width * (entry.kind === "state" ? 0.4 : 0.32);
     const fitted = Math.min(cap, entry.span * unit * 0.9) / Math.max(1, measureLabel(entry, 100).w) * 100;
     const readable = entry.kind === "state" ? 11 : 8;
-    const font = Math.min(Math.max(fitted, readable), cap / Math.max(1, measureLabel(entry, 100).w) * 100);
+    const font = Math.min(Math.max(fitted, readable), entry.kind === "town" ? 13 : cap / Math.max(1, measureLabel(entry, 100).w) * 100);
     if (font < 8) {
       skipped.push(`${entry.text}:tiny:${fitted.toFixed(1)}`);
       continue;
@@ -2472,10 +2482,40 @@ function layoutMapLabels(viewport) {
     frag.appendChild(node);
   }
   layer.replaceChildren(frag);
+  settleLabelEdges(viewport);
+  const viewBox = viewport.getBoundingClientRect();
   viewport._labelSkips = skipped;
-  viewport._labelBoxes = placed
-    .filter(box => box.kind === "state" || box.kind === "county")
-    .map(box => ({ left: box.left, top: box.top, right: box.right, bottom: box.bottom }));
+  viewport._labelBoxes = [...viewport.querySelectorAll(":scope > .map-labels .map-label")]
+    .filter(node => node.classList.contains("kind-state") || node.classList.contains("kind-county"))
+    .map(node => {
+      const rect = node.getBoundingClientRect();
+      return { left: rect.left - viewBox.left, top: rect.top - viewBox.top, right: rect.right - viewBox.left, bottom: rect.bottom - viewBox.top };
+    });
+}
+
+function settleLabelEdges(viewport) {
+  const view = viewport.getBoundingClientRect();
+  const margin = 2;
+  for (const node of [...viewport.querySelectorAll(":scope > .map-labels .map-label")]) {
+    let rect = node.getBoundingClientRect();
+    if (rect.width > view.width - margin * 2 || rect.height > view.height - margin * 2) {
+      node.remove();
+      continue;
+    }
+    let shiftX = 0;
+    let shiftY = 0;
+    if (rect.left < view.left + margin) shiftX = view.left + margin - rect.left;
+    else if (rect.right > view.right - margin) shiftX = view.right - margin - rect.right;
+    if (rect.top < view.top + margin) shiftY = view.top + margin - rect.top;
+    else if (rect.bottom > view.bottom - margin) shiftY = view.bottom - margin - rect.bottom;
+    if (shiftX || shiftY) {
+      node.style.left = `${parseFloat(node.style.left) + shiftX}px`;
+      node.style.top = `${parseFloat(node.style.top) + shiftY}px`;
+      rect = node.getBoundingClientRect();
+    }
+    const clipped = rect.left < view.left - 1 || rect.right > view.right + 1 || rect.top < view.top - 1 || rect.bottom > view.bottom + 1;
+    if (clipped) node.remove();
+  }
 }
 
 function avoidLabelBoxes(map, lat, lng, boxes, clearance = 16) {
@@ -2716,6 +2756,7 @@ function mountLeafletMap(viewport, paneId) {
   pane.id = paneId;
   pane.style.zIndex = "650";
   const layers = ["far", "mid", "close"].map(name => L.imageOverlay(`content/parchment-${name}.jpg`, MAP_FRAME));
+  viewport._parchment = layers;
   viewport._drawPins = () => drawPins(viewport);
   if (ACCURACY_MAP) {
     L.tileLayer("https://s.rsg.sc/sc/images/games/RDR2/map/game/{z}/{x}/{y}.jpg", {
@@ -2735,7 +2776,7 @@ function mountLeafletMap(viewport, paneId) {
     const changed = viewport.dataset.detail !== detail;
     viewport.dataset.scale = ratio.toFixed(3);
     viewport.dataset.detail = detail;
-    if (!ACCURACY_MAP) {
+    if (!ACCURACY_MAP && !viewport._accuracyOn) {
       layers[0].setOpacity(detail === "far" ? 1 : 0);
       layers[1].setOpacity(detail === "mid" ? 1 : 0);
       layers[2].setOpacity(detail === "close" ? 1 : 0);
@@ -2749,10 +2790,28 @@ function mountLeafletMap(viewport, paneId) {
     map.setMinZoom(-2);
     map.invalidateSize({ animate: false });
     const home = viewport._landBounds?.isValid?.() ? viewport._landBounds : MAP_FRAME;
-    map.setMaxBounds(home.pad(0.04));
-    map.fitBounds(home, { animate: false, padding: [1, 1] });
-    viewport._fitZoom = map.getZoom();
-    map.setMinZoom(viewport._fitZoom);
+    const size = map.getSize();
+    const southWest = map.project(home.getSouthWest(), 0);
+    const northEast = map.project(home.getNorthEast(), 0);
+    const boundsWidth = Math.abs(northEast.x - southWest.x) || 1;
+    const boundsHeight = Math.abs(northEast.y - southWest.y) || 1;
+    const widthZoom = Math.log2(size.x / boundsWidth);
+    const heightZoom = Math.log2(size.y / boundsHeight);
+    // Fill the screen. A width-only fit on a tall phone is the short strip
+    // with the horizontal seams. maxBounds keeps the pan inside the land,
+    // east-west in portrait and north-south when the window is wide.
+    const zoom = Math.max(widthZoom, heightZoom);
+    const padded = home.pad(0.04);
+    const limit = L.latLngBounds(
+      [Math.max(MAP_FRAME.getSouth(), padded.getSouth()), Math.max(MAP_FRAME.getWest(), padded.getWest())],
+      [Math.min(MAP_FRAME.getNorth(), padded.getNorth()), Math.min(MAP_FRAME.getEast(), padded.getEast())]
+    );
+    map.setMaxBounds(limit.isValid() ? limit : home);
+    map.setView(home.getCenter(), zoom, { animate: false });
+    viewport._fitZoom = zoom;
+    viewport._widthZoom = widthZoom;
+    map.setMinZoom(zoom);
+    map.panInsideBounds(limit.isValid() ? limit : home, { animate: false });
     viewport._userMoved = false;
     fitting = false;
     applyDetail();
@@ -2865,6 +2924,27 @@ function mountLeafletMap(viewport, paneId) {
   };
   requestAnimationFrame(bootFit);
 }
+
+window.frontierShowAccuracy = on => {
+  try { localStorage.setItem("fg_accuracy", on ? "1" : "0"); } catch { /* tiles can still be added for this visit */ }
+  for (const id of ["fieldMap", "hiddenMap"]) {
+    const viewport = document.getElementById(id);
+    const map = viewport?.frontierMap;
+    if (!map || !MAP_FRAME) continue;
+    viewport._accuracyOn = Boolean(on);
+    if (on && !viewport._accuracyLayer) {
+      viewport._accuracyLayer = L.tileLayer("https://s.rsg.sc/sc/images/games/RDR2/map/game/{z}/{x}/{y}.jpg", {
+        bounds: MAP_FRAME,
+        minZoom: 2,
+        maxZoom: 7,
+        noWrap: true
+      }).addTo(map);
+    }
+    if (viewport._accuracyLayer) viewport._accuracyLayer.setOpacity(on ? 1 : 0);
+    viewport._parchment?.forEach(layer => layer.setOpacity(on ? 0 : 1));
+    if (!on) viewport._drawPins?.();
+  }
+};
 
 function setCoachState(stateName, detail) {
   coach.state = stateName;
@@ -3290,6 +3370,7 @@ loadMap();
 loadFieldContent();
 checkStatus();
 showSavedUpdate();
+cachedProgress();
 renderSteamStatus();
 window.speechSynthesis?.getVoices?.();
 window.speechSynthesis?.addEventListener?.("voiceschanged", () => {});
@@ -3300,8 +3381,18 @@ function steamId() {
 }
 
 function cachedProgress() {
-  try { return JSON.parse(localStorage.getItem("fg_steam_progress") || "null"); }
-  catch { return null; }
+  const id = steamId();
+  if (!id) {
+    try { localStorage.removeItem("fg_steam_progress"); } catch { /* nothing saved */ }
+    return null;
+  }
+  try {
+    const data = JSON.parse(localStorage.getItem("fg_steam_progress") || "null");
+    if (!data || data.steamId !== id) return null;
+    return data;
+  } catch {
+    return null;
+  }
 }
 
 function formatUnlock(unix) {
@@ -3311,24 +3402,41 @@ function formatUnlock(unix) {
   return `Unlocked ${date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}`;
 }
 
-function renderSteamProgress(data) {
+function renderSteamProgress(data, note = "") {
   const summary = $("#progressSummary");
   const list = $("#progressList");
   if (!summary || !list) return;
   summary.replaceChildren();
-  const heading = document.createElement("p");
-  if (!data) heading.textContent = "Connect Steam in Settings to sync achievements. Game details on your Steam profile must be public.";
-  else {
+  summary.classList.toggle("progress-empty", !data);
+  if (!data) {
+    const heading = document.createElement("h3");
+    heading.textContent = "Connect Steam";
+    const copy = document.createElement("p");
+    copy.textContent = note || "Sign in from Settings to load Red Dead Redemption 2 achievements and hours. Nothing is shown here until a Steam account is linked.";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "send";
+    button.textContent = "Connect Steam";
+    button.addEventListener("click", () => setView("settings"));
+    summary.append(heading, copy, button);
+  } else {
+    const heading = document.createElement("p");
     const hours = Number.isFinite(Number(data.hoursPlayed)) ? `${data.hoursPlayed} hours` : "Hours not shared";
     const percent = Number.isFinite(Number(data.percent)) ? `${data.percent}%` : "0%";
     heading.textContent = `${hours} · ${data.unlocked || 0} of ${data.total || 0} achievements · ${percent}`;
-  }
-  summary.appendChild(heading);
-  if (data?.fetchedAt) {
-    const when = document.createElement("p");
-    when.className = "muted";
-    when.textContent = `Saved on this phone ${new Date(data.fetchedAt).toLocaleString()}. Pull down or tap Refresh to sync.`;
-    summary.appendChild(when);
+    summary.appendChild(heading);
+    if (data.fetchedAt) {
+      const when = document.createElement("p");
+      when.className = "muted";
+      when.textContent = `Saved on this phone ${new Date(data.fetchedAt).toLocaleString()}. Pull down or tap Refresh to sync.`;
+      summary.appendChild(when);
+    }
+    if (note) {
+      const extra = document.createElement("p");
+      extra.className = "muted";
+      extra.textContent = note;
+      summary.appendChild(extra);
+    }
   }
   list.replaceChildren();
   for (const item of data?.achievements || []) {
@@ -3369,23 +3477,34 @@ function renderSteamStatus() {
 }
 
 async function syncSteamProgress() {
-  const cached = cachedProgress();
-  renderSteamProgress(cached);
   const id = steamId();
-  if (!id || !settings.api || settings.serverMode === "offline") return;
-  const summary = $("#progressSummary");
+  if (!id) {
+    try { localStorage.removeItem("fg_steam_progress"); } catch { /* nothing saved */ }
+    renderSteamProgress(null);
+    return;
+  }
+  const cached = cachedProgress();
+  if (cached) renderSteamProgress(cached);
+  else renderSteamProgress(null, "Steam is linked. Achievements appear after a real sync.");
+  if (!settings.api || settings.serverMode === "offline") return;
   try {
     const data = await requestJson(`/api/steam/progress?steamId=${encodeURIComponent(id)}`, {
       cache: "no-store",
       headers: serverHeaders()
     });
+    data.steamId = id;
     localStorage.setItem("fg_steam_progress", JSON.stringify(data));
     renderSteamProgress(data);
   } catch (error) {
-    const note = document.createElement("p");
-    note.className = "muted";
-    note.textContent = error.message || "Steam sync failed. The saved copy stays on this phone.";
-    summary?.appendChild(note);
+    const message = error.status === 404
+      ? "This server does not have Steam progress yet. No saved numbers are shown."
+      : (error.message || "Steam sync failed.");
+    if (error.status === 404) {
+      try { localStorage.removeItem("fg_steam_progress"); } catch { /* nothing saved */ }
+      renderSteamProgress(null, message);
+      return;
+    }
+    renderSteamProgress(cached, message);
   }
 }
 

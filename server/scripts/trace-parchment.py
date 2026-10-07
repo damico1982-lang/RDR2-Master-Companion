@@ -72,25 +72,62 @@ def smooth_mask(mask):
     return out > 0
 
 
-def water_mask(image):
+def skeletonize(mask):
+    image = (mask.astype(np.uint8) * 255)
+    skeleton = np.zeros_like(image)
+    element = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
+    while cv2.countNonZero(image):
+        opened = cv2.morphologyEx(image, cv2.MORPH_OPEN, element)
+        skeleton = cv2.bitwise_or(skeleton, cv2.subtract(image, opened))
+        image = cv2.erode(image, element)
+    return skeleton > 0
+
+
+def classify_water(image):
     red = image[:, :, 0].astype(np.int16)
+    green = image[:, :, 1].astype(np.int16)
     blue = image[:, :, 2].astype(np.int16)
-    raw = ((red - blue) < 46).astype(np.uint8) * 255
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    raw = cv2.morphologyEx(raw, cv2.MORPH_OPEN, kernel)
-    raw = cv2.morphologyEx(raw, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)))
+    # Game water is gray-teal: darker than the land and with a smaller red-blue gap.
+    raw = (((red - blue) < 42) & (red < 175) & (green < 170)).astype(np.uint8) * 255
+    raw = cv2.morphologyEx(raw, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)))
     count, labels, stats, _ = cv2.connectedComponentsWithStats(raw, connectivity=8)
-    kept = np.zeros_like(raw)
+    clean = np.zeros_like(raw)
     for index in range(1, count):
-        if stats[index, cv2.CC_STAT_AREA] >= 40:
-            kept[labels == index] = 255
-    return smooth_mask(kept)
+        if int(stats[index, cv2.CC_STAT_AREA]) >= 80:
+            clean[labels == index] = 255
+    # Wide cores survive erosion. Thin channels do not, so they stay rivers.
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+    core = cv2.erode(clean, kernel)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(core, connectivity=8)
+    cores = np.zeros_like(core)
+    for index in range(1, count):
+        if int(stats[index, cv2.CC_STAT_AREA]) >= 800:
+            cores[labels == index] = 255
+    lakes = cv2.dilate(cores, kernel) & clean
+    lakes = cv2.morphologyEx(lakes, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)))
+    rivers = clean.copy()
+    rivers[lakes > 0] = 0
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(rivers, connectivity=8)
+    thin = np.zeros_like(rivers)
+    for index in range(1, count):
+        area = int(stats[index, cv2.CC_STAT_AREA])
+        extent = max(int(stats[index, cv2.CC_STAT_WIDTH]), int(stats[index, cv2.CC_STAT_HEIGHT]))
+        if area < 160 or extent < 48:
+            continue
+        thin[labels == index] = 255
+    # Centerline, then a 2px stroke. One color, no second outline.
+    center = skeletonize(thin > 0)
+    # About three pixels at full resolution: a hairline on the phone, one stroke.
+    rivers = cv2.dilate(center.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)))
+    lakes = smooth_mask(lakes)
+    rivers = (rivers > 0) & ~lakes
+    return lakes, rivers
 
 
 def line_masks(image, water):
     gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
     hat = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7)))
-    raw = ((hat > 26) & ~water).astype(np.uint8)
+    raw = ((hat > 32) & ~water).astype(np.uint8)
     # Drop specks, then bridge tiny gaps along a road without welding a word into a blob.
     count, labels, stats, _ = cv2.connectedComponentsWithStats(raw, connectivity=8)
     speck = raw.copy()
@@ -143,18 +180,18 @@ def line_masks(image, water):
 
 
 def terrain(gray, land):
-    smooth = cv2.GaussianBlur(gray, (0, 0), 5)
+    smooth = cv2.GaussianBlur(gray, (0, 0), 7)
     gx = cv2.Sobel(smooth, cv2.CV_32F, 1, 0, ksize=3)
     gy = cv2.Sobel(smooth, cv2.CV_32F, 0, 1, ksize=3)
     mag = cv2.magnitude(gx, gy)
     sample = mag[land]
     if sample.size == 0:
         return np.zeros(gray.shape, dtype=bool)
-    low = np.percentile(sample, 88)
-    high = np.percentile(sample, 99.4)
+    low = np.percentile(sample, 93)
+    high = np.percentile(sample, 99.2)
     lines = (mag > low) & (mag < high) & land
     yy, xx = np.mgrid[0:gray.shape[0], 0:gray.shape[1]]
-    return lines & ((xx // 3 + yy // 5) % 3 == 0)
+    return lines & (((xx // 4) + (yy // 6)) % 4 == 0)
 
 
 def dotted(mask, step=18, radius=6):
@@ -186,27 +223,39 @@ def keep_long(mask, min_extent):
     return kept
 
 
-def paint_base(gray, water, roads, rail, borders, relief):
+def stroke(mask, radius=1):
+    if not np.any(mask):
+        return mask
+    center = skeletonize(mask)
+    if radius <= 0:
+        return center
+    kernel = 2 * radius + 1
+    return cv2.dilate(center.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel, kernel))).astype(bool)
+
+
+def paint_base(gray, lakes, rivers, roads, rail, borders, relief):
     canvas = np.empty((HEIGHT, WIDTH, 3), dtype=np.uint8)
     canvas[:] = PAPER
-    land = ~water
-    tone = cv2.GaussianBlur(gray, (0, 0), 11).astype(np.int16)
-    delta = np.clip((tone - 158) // 7, -18, 8)
+    land = ~lakes
+    tone = cv2.GaussianBlur(gray, (0, 0), 13).astype(np.int16)
+    delta = np.clip((tone - 158) // 11, -10, 5)
     shaded = np.clip(np.array(PAPER, np.int16) + delta[:, :, None], 0, 255).astype(np.uint8)
     canvas[land] = shaded[land]
     if relief is not None and relief.any():
-        shade = np.array([168, 146, 116], dtype=np.uint8)
-        canvas[relief & land] = (canvas[relief & land].astype(np.int16) * 3 + shade.astype(np.int16)) // 4
-    canvas[water] = WATER
-    coast = cv2.dilate(water.astype(np.uint8), np.ones((5, 5), np.uint8)).astype(bool) & ~water
+        shade = np.array([186, 164, 132], dtype=np.uint8)
+        canvas[relief & land] = (canvas[relief & land].astype(np.int16) * 4 + shade.astype(np.int16)) // 5
+    canvas[lakes] = WATER
+    # One thin coast. A second dilated ring is what read as a double outline.
+    coast = cv2.dilate(lakes.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))).astype(bool) & ~lakes
     canvas[coast] = COAST
-    road_ink = cv2.dilate((roads & ~water).astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))).astype(bool)
+    canvas[rivers & ~lakes] = (108, 128, 132)
+    road_ink = stroke(roads & ~lakes, radius=1)
     canvas[road_ink] = ROAD
-    rail_body = cv2.dilate((rail & ~water).astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))).astype(bool)
     yy, xx = np.indices(rail.shape)
-    dashes = rail_body & ((((xx + yy) // 8) % 2) == 0)
+    rail_ink = stroke(rail & ~lakes, radius=1)
+    dashes = rail_ink & ((((xx + yy) // 6) % 2) == 0)
     canvas[dashes] = RAIL
-    canvas[dotted(borders) & ~water] = BORDER
+    canvas[dotted(borders, step=16, radius=4) & ~lakes] = BORDER
     return canvas
 
 
@@ -281,17 +330,22 @@ def land_bounds(mask):
 
 def main():
     image = load_composite()
-    water = water_mask(image)
-    roads, rail, borders, relief = line_masks(image, water)
+    lakes, rivers = classify_water(image)
+    lakes = lakes.astype(bool)
+    rivers = rivers.astype(bool)
+    # Keep road and rail tracing off the water strokes.
+    occupied = lakes | cv2.dilate(rivers.astype(np.uint8), np.ones((5, 5), np.uint8)).astype(bool)
+    roads, rail, borders, relief = line_masks(image, occupied)
     print(
-        "water", round(float(water.mean()), 4),
+        "water", round(float(lakes.mean()), 4),
+        "rivers", round(float(rivers.mean()), 4),
         "roads", round(float(roads.mean()), 4),
         "rail", round(float(rail.mean()), 4),
         "borders", round(float(borders.mean()), 4),
         "relief", round(float(relief.mean()), 4),
     )
     gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-    detail = paint_base(gray, water, roads, rail, borders, relief)
+    detail = paint_base(gray, lakes, rivers, roads, rail, borders, relief)
     paper = np.array(PAPER, np.int16)
     delta = np.abs(detail.astype(np.int16) - paper).sum(axis=2)
     bounds = land_bounds(delta > 40)
@@ -304,7 +358,7 @@ def main():
         encoded = Image.fromarray(painted[level])
         for folder in OUT_DIRS:
             folder.mkdir(parents=True, exist_ok=True)
-            encoded.save(folder / out_name, quality=88, optimize=True)
+            encoded.save(folder / out_name, quality=93, optimize=True)
             old = folder / f"parchment-{level}.png"
             if old.exists():
                 old.unlink()
