@@ -425,7 +425,13 @@ function shot(name) {
 }
 async function show(view) {
   await send("Runtime.evaluate", {
-    expression: `document.querySelectorAll(".view").forEach(element => element.classList.remove("active")); document.getElementById(${JSON.stringify(`${view}View`)})?.classList.add("active"); "ok"`,
+    expression: `(() => {
+      const panel = document.getElementById(${JSON.stringify(`${view}View`)});
+      document.querySelectorAll(".view").forEach(element => element.classList.remove("active"));
+      panel?.classList.add("active");
+      panel?.scrollIntoView({ block: "start", behavior: "auto" });
+      return "ok";
+    })()`,
     returnByValue: true
   });
   await delay(700);
