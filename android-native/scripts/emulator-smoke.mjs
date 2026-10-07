@@ -292,6 +292,10 @@ let ws;
 function send(method, params = {}, timeoutMs = 30000) {
   const id = ++nextId;
   return new Promise((resolve, reject) => {
+    if (!ws || ws.readyState !== 1) {
+      reject(new Error("DevTools websocket closed"));
+      return;
+    }
     const timer = setTimeout(() => {
       pending.delete(id);
       reject(new Error(`Timed out waiting for ${method}`));
@@ -515,7 +519,7 @@ if (!progressBody.includes("Connect Steam") || /42\.5|Back in the Mud/.test(prog
   problems.push(`progress screen did not show the empty state: ${progressBody.slice(0, 180)}`);
 }
 await delay(400);
-shot("progress-empty-1.7.3");
+shot("progress-empty-1.7.4");
 
 await send("Page.enable").catch(() => {});
 async function mapShot(name, elementId, scale, x, y, detailName) {
@@ -527,10 +531,14 @@ async function mapShot(name, elementId, scale, x, y, detailName) {
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       map?.frontierReflow?.();
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const started = Date.now();
+      while (map && map._vectorsReady !== true && Date.now() - started < 8000) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
       if (map && map.frontierZoomTo) map.frontierZoomTo(${scale}, ${x}, ${y});
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const rect = map?.getBoundingClientRect();
-      return JSON.stringify({ detail: map?.dataset.detail || "missing", zoom: map?.frontierMap?.getZoom(), width: rect?.width || 0, height: rect?.height || 0 });
+      return JSON.stringify({ detail: map?.dataset.detail || "missing", zoom: map?.frontierMap?.getZoom(), width: rect?.width || 0, height: rect?.height || 0, vectors: map?._vectors?.getLayers?.().length || 0 });
     })()`,
     awaitPromise: true,
     returnByValue: true
@@ -545,13 +553,54 @@ async function mapShot(name, elementId, scale, x, y, detailName) {
   }
   console.log(name, JSON.stringify(parsed));
   if (reported !== detailName) problems.push(`${name} detail ${reported}`);
+  if (elementId === "fieldMap" && !(parsed.vectors > 20)) problems.push(`${name} vectors ${parsed.vectors}`);
   await delay(900);
   shot(name);
   return parsed;
 }
-await mapShot("map-full-1.7.3", "fieldMap", 1, 50, 50, "far");
-await mapShot("map-mid-1.7.3", "fieldMap", 2.5, 70, 55, "mid");
-await mapShot("map-close-1.7.3", "fieldMap", 4.2, 72, 46, "close");
+await mapShot("map-full-1.7.4", "fieldMap", 1, 50, 50, "far");
+await mapShot("map-mid-1.7.4", "fieldMap", 2.5, 70, 55, "mid");
+await mapShot("map-close-1.7.4", "fieldMap", 4.2, 72, 46, "close");
+async function maxShot(name, lat, lng) {
+  const detail = await sendRetry("Runtime.evaluate", {
+    expression: `(async () => {
+      if (typeof setView === "function") setView("map");
+      window.frontierShowAccuracy?.(false);
+      const detail = document.getElementById("mapDetail");
+      detail?.classList.remove("is-open");
+      const layers = document.querySelector("#mapView .map-sheet");
+      if (layers) layers.hidden = true;
+      const map = document.getElementById("fieldMap");
+      const started = Date.now();
+      while (map && map._vectorsReady !== true && Date.now() - started < 8000) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      map?.frontierMap?.setView([${lat}, ${lng}], map.frontierMap.getMaxZoom(), { animate: false });
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      return JSON.stringify({
+        zoom: map?.frontierMap?.getZoom(),
+        max: map?.frontierMap?.getMaxZoom(),
+        detail: map?.dataset.detail || "",
+        vectors: map?._vectors?.getLayers?.().length || 0,
+        card: Boolean(detail?.classList.contains("is-open")),
+        accuracy: Boolean(map?._accuracyOn)
+      });
+    })()`,
+    awaitPromise: true,
+    returnByValue: true
+  });
+  let parsed = {};
+  try { parsed = JSON.parse(detail?.result?.value || "{}"); } catch { parsed = {}; }
+  console.log(name, JSON.stringify(parsed));
+  if (!(parsed.zoom >= 6.5) || parsed.detail !== "close" || !(parsed.vectors > 20) || parsed.card || parsed.accuracy) {
+    problems.push(`${name} ${JSON.stringify(parsed)}`);
+  }
+  await delay(900);
+  shot(name);
+}
+await maxShot("map-max-valentine-1.7.4", -53.602, 108.3971);
+await maxShot("map-max-saintdenis-1.7.4", -86.3787, 152.6896);
+await maxShot("map-max-blackwater-1.7.4", -82.9581, 99.7447);
 
 const layoutReport = await send("Runtime.evaluate", {
   expression: `(() => {
@@ -608,7 +657,7 @@ console.log("layers", JSON.stringify(layersLayout));
 if (layersLayout.name !== "All" || layersLayout.pressed !== "true" || !(Number(layersLayout.count) > 0) || (layersLayout.names || []).includes("None")) {
   problems.push(`layers sheet ${JSON.stringify(layersLayout)}`);
 }
-shot("layers-sheet-1.7.3");
+shot("layers-sheet-1.7.4");
 await send("Runtime.evaluate", {
   expression: `(() => { document.querySelector("#mapView .map-layers-toggle")?.click(); return "layers-closed"; })()`,
   returnByValue: true
@@ -655,19 +704,19 @@ if (!/Bayou Nwa,\s*Lemoyne/.test(bullCard.text || "") || /RDOMap|Story mode/.tes
 }
 if (!bullCard.sourceCollapsed) problems.push("source link is not inside a collapsed Source section");
 await delay(400);
-shot("map-card-bullgator-1.7.3");
+shot("map-card-bullgator-1.7.4");
 const arabianCard = await openMarker("horse-white-arabian");
 if (!/Lake Isabella/.test(arabianCard.text || "") || /RDOMap|Published White Arabian marker/.test(arabianCard.text || "")) {
   problems.push(`white arabian card copy: ${String(arabianCard.text || "").slice(0, 240)}`);
 }
 await delay(400);
-shot("map-card-whitearabian-1.7.3");
+shot("map-card-whitearabian-1.7.4");
 const gunsmithCard = await openMarker("gunsmith-valentine");
 if (!/Valentine,\s*New Hanover/.test(gunsmithCard.text || "") || /Published shop coordinate/.test(gunsmithCard.text || "") || !/ammunition/i.test(gunsmithCard.text || "")) {
   problems.push(`gunsmith card copy: ${String(gunsmithCard.text || "").slice(0, 240)}`);
 }
 await delay(400);
-shot("map-card-gunsmith-1.7.3");
+shot("map-card-gunsmith-1.7.4");
 
 spawnSync("adb", ["shell", "settings", "put", "system", "accelerometer_rotation", "0"]);
 spawnSync("adb", ["shell", "settings", "put", "system", "user_rotation", "1"]);
@@ -700,14 +749,14 @@ if (!landscapeLayout.open || !(landscapeLayout.cardBottom <= landscapeLayout.nav
 }
 if (landscapeSpread > 8) problems.push(`landscape nav wrapped: ${JSON.stringify(landscapeLayout.tops)}`);
 await delay(700);
-shot("map-landscape-card-1.7.3");
+shot("map-landscape-card-1.7.4");
 spawnSync("adb", ["shell", "settings", "put", "system", "user_rotation", "0"]);
 await delay(800);
 
 await show("hidden");
-shot("hidden-1.7.3");
+shot("hidden-1.7.4");
 await show("home");
-shot("home-1.7.3");
+shot("home-1.7.4");
 const homeReport = await send("Runtime.evaluate", {
   expression: `(() => {
     const home = document.getElementById("homeView");
@@ -857,7 +906,7 @@ console.log("gesture", JSON.stringify(gestureReport));
 if (!(gestureReport.pan > 0.2)) problems.push(`pan ${JSON.stringify(gestureReport)}`);
 if (!(gestureReport.pinched > gestureReport.zoom)) problems.push(`pinch zoom ${JSON.stringify(gestureReport)}`);
 
-const health = await send("Runtime.evaluate", {
+const health = await sendRetry("Runtime.evaluate", {
   expression: `fetch("https://frontier-guide-api.onrender.com/api/health", { cache: "no-store" }).then(async response => JSON.stringify({ status: response.status, body: await response.json() })).catch(error => JSON.stringify({ error: String(error) }))`,
   awaitPromise: true,
   returnByValue: true

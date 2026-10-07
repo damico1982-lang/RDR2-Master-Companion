@@ -2916,6 +2916,38 @@ function mountLeafletMap(viewport, paneId) {
   const layers = ["far", "mid", "close"].map(name => L.imageOverlay(`content/parchment-${name}.jpg`, MAP_FRAME));
   viewport._parchment = layers;
   viewport._drawPins = () => drawPins(viewport);
+  const vectorPane = map.createPane("vectors");
+  vectorPane.style.zIndex = "350";
+  vectorPane.style.pointerEvents = "none";
+  viewport._vectorPane = vectorPane;
+  const vectorRenderer = L.canvas({ padding: 0.5, pane: "vectors" });
+  viewport._vectors = L.layerGroup().addTo(map);
+  viewport._vectorsReady = false;
+  const drawVectors = data => {
+    const common = { renderer: vectorRenderer, interactive: false, pane: "vectors", smoothFactor: 0, lineCap: "round", lineJoin: "round" };
+    const latLngs = line => (line || []).map(([lng, lat]) => [lat, lng]);
+    (data.lakes || []).forEach(rings => {
+      const converted = rings.map(latLngs).filter(ring => ring.length >= 3);
+      if (!converted.length) return;
+      L.polygon(converted, { ...common, color: "#3a4e54", weight: 1.5, fillColor: "#849496", fillOpacity: 1, opacity: 1 }).addTo(viewport._vectors);
+    });
+    const stroke = (key, style) => {
+      (data[key] || []).forEach(line => {
+        const converted = latLngs(line);
+        if (converted.length < 2) return;
+        L.polyline(converted, { ...common, ...style }).addTo(viewport._vectors);
+      });
+    };
+    stroke("rivers", { color: "#6c8084", weight: 1.5 });
+    stroke("borders", { color: "#4a3828", weight: 1.35, dashArray: "0 6.5" });
+    stroke("roads", { color: "#70543a", weight: 1.35 });
+    stroke("rail", { color: "#48382a", weight: 1.3, dashArray: "6 5" });
+    viewport._vectorsReady = true;
+  };
+  fetch("content/map-lines.json")
+    .then(response => response.json())
+    .then(drawVectors)
+    .catch(() => { viewport._vectorsReady = true; });
   if (ACCURACY_MAP) {
     L.tileLayer("https://s.rsg.sc/sc/images/games/RDR2/map/game/{z}/{x}/{y}.jpg", {
       bounds: MAP_FRAME,
@@ -3100,6 +3132,7 @@ window.frontierShowAccuracy = on => {
     }
     if (viewport._accuracyLayer) viewport._accuracyLayer.setOpacity(on ? 1 : 0);
     viewport._parchment?.forEach(layer => layer.setOpacity(on ? 0 : 1));
+    if (viewport._vectorPane) viewport._vectorPane.style.display = on ? "none" : "";
     if (!on) viewport._drawPins?.();
   }
 };

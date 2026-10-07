@@ -64,7 +64,7 @@ test("GET /api/health stays public for Render and reports readiness", async () =
       model: "gpt-6-luna",
       authRequired: true,
       authorized: false,
-      version: "1.7.3",
+      version: "1.7.4",
       tts: {
         enabled: true,
         model: "gpt-4o-mini-tts",
@@ -458,7 +458,8 @@ test("android assets match the web guide shell", () => {
     "content/animals.json",
     "content/secrets.json",
     "content/hidden-places.json",
-    "content/land-bounds.json"
+    "content/land-bounds.json",
+    "content/map-lines.json"
   ];
   for (const file of files) {
     const web = readFileSync(new URL(`../public/${file}`, import.meta.url), "utf8");
