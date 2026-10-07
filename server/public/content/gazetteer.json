@@ -1,0 +1,182 @@
+[
+  {
+    "name": "AMBARINO",
+    "lat": -22.5208,
+    "lng": 95.8414
+  },
+  {
+    "name": "NEW HANOVER",
+    "lat": -48.4758,
+    "lng": 124.9351
+  },
+  {
+    "name": "WEST ELIZABETH",
+    "lat": -60.849,
+    "lng": 79.1705
+  },
+  {
+    "name": "LEMOYNE",
+    "lat": -89.9568,
+    "lng": 146.5625
+  },
+  {
+    "name": "NEW AUSTIN",
+    "lat": -108.3601,
+    "lng": 41.2877
+  },
+  {
+    "name": "Flat Iron Lake",
+    "lat": -94.3058,
+    "lng": 122.5219
+  },
+  {
+    "name": "San Luis River",
+    "lat": -117.7767,
+    "lng": 44.4843
+  },
+  {
+    "name": "Lannahechee River",
+    "lat": -70.7624,
+    "lng": 164.0641
+  },
+  {
+    "name": "Grizzlies West",
+    "lat": -31.2706,
+    "lng": 91.5462
+  },
+  {
+    "name": "Grizzlies East",
+    "lat": -31.586,
+    "lng": 141.1262
+  },
+  {
+    "name": "Cumberland Forest",
+    "lat": -52.1804,
+    "lng": 101.6085
+  },
+  {
+    "name": "Heartlands",
+    "lat": -70.6933,
+    "lng": 120.0284
+  },
+  {
+    "name": "Roanoke Ridge",
+    "lat": -49.5886,
+    "lng": 158.5654
+  },
+  {
+    "name": "Scarlett Meadows",
+    "lat": -61.8535,
+    "lng": 132.9869
+  },
+  {
+    "name": "Bayou Nwa",
+    "lat": -79.327,
+    "lng": 140.5902
+  },
+  {
+    "name": "Bluewater Marsh",
+    "lat": -55.3498,
+    "lng": 154.9992
+  },
+  {
+    "name": "Big Valley",
+    "lat": -68.8589,
+    "lng": 96.4799
+  },
+  {
+    "name": "Tall Trees",
+    "lat": -74.3238,
+    "lng": 84.2069
+  },
+  {
+    "name": "Great Plains",
+    "lat": -81.1424,
+    "lng": 105.721
+  },
+  {
+    "name": "Hennigan's Stead",
+    "lat": -95.8615,
+    "lng": 81.7539
+  },
+  {
+    "name": "Cholla Springs",
+    "lat": -103.2492,
+    "lng": 47.5913
+  },
+  {
+    "name": "Rio Bravo",
+    "lat": -119.8089,
+    "lng": 35.3508
+  },
+  {
+    "name": "Gaptooth Ridge",
+    "lat": -107.5977,
+    "lng": 25.4866
+  },
+  {
+    "name": "Colter",
+    "lat": -25.9919,
+    "lng": 91.0348
+  },
+  {
+    "name": "Wapiti",
+    "lat": -29.7933,
+    "lng": 118.8076
+  },
+  {
+    "name": "Valentine",
+    "lat": -53.602,
+    "lng": 108.3971
+  },
+  {
+    "name": "Emerald Ranch",
+    "lat": -56.8038,
+    "lng": 134.8028
+  },
+  {
+    "name": "Strawberry",
+    "lat": -70.03,
+    "lng": 84.3196
+  },
+  {
+    "name": "Blackwater",
+    "lat": -82.9581,
+    "lng": 99.7447
+  },
+  {
+    "name": "Rhodes",
+    "lat": -83.6534,
+    "lng": 130.6434
+  },
+  {
+    "name": "Saint Denis",
+    "lat": -86.3787,
+    "lng": 152.6896
+  },
+  {
+    "name": "Annesburg",
+    "lat": -43.4814,
+    "lng": 156.745
+  },
+  {
+    "name": "Van Horn Trading Post",
+    "lat": -53.7409,
+    "lng": 156.3243
+  },
+  {
+    "name": "Lagras",
+    "lat": -72.6373,
+    "lng": 143.8494
+  },
+  {
+    "name": "Armadillo",
+    "lat": -104.3897,
+    "lng": 53.4547
+  },
+  {
+    "name": "Tumbleweed",
+    "lat": -109.3272,
+    "lng": 26.8317
+  }
+]

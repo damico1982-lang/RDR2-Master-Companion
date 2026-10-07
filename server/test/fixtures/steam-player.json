@@ -1,0 +1,11 @@
+{
+  "playerstats": {
+    "steamID": "76561198000000000",
+    "gameName": "Red Dead Redemption 2",
+    "success": true,
+    "achievements": [
+      { "apiname": "ACH_BACK_IN_THE_MUD", "achieved": 1, "unlocktime": 1609459200 },
+      { "apiname": "ACH_HORSEMAN", "achieved": 0, "unlocktime": 0 }
+    ]
+  }
+}

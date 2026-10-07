@@ -64,11 +64,15 @@ test("GET /api/health stays public for Render and reports readiness", async () =
       model: "gpt-6-luna",
       authRequired: true,
       authorized: false,
-      version: "1.5.0",
+      version: "1.7.2",
       tts: {
         enabled: true,
         model: "gpt-4o-mini-tts",
         voice: "onyx"
+      },
+      steam: {
+        configured: false,
+        appId: 1174180
       }
     });
 
@@ -96,7 +100,7 @@ test("GET / serves the installable Frontier Guide web app", async () => {
 
     const api = await fetch(`${baseUrl}/api`);
     assert.equal(api.status, 200);
-    assert.deepEqual((await api.json()).endpoints, ["/api/health", "/api/ask", "/api/speak", "/api/coach", "/api/live-update"]);
+    assert.deepEqual((await api.json()).endpoints, ["/api/health", "/api/ask", "/api/speak", "/api/coach", "/api/live-update", "/api/steam/progress", "/api/link/pair"]);
   });
 });
 
@@ -444,18 +448,46 @@ test("android assets match the web guide shell", () => {
     "index.html",
     "styles.css",
     "sw.js",
+    "frontier-map.svg",
+    "vendor/leaflet.js",
+    "vendor/leaflet.css",
     "content/guide.json",
     "content/map.json",
+    "content/gazetteer.json",
     "content/legendaries.json",
     "content/animals.json",
     "content/secrets.json",
-    "content/hidden-places.json"
+    "content/hidden-places.json",
+    "content/land-bounds.json"
   ];
   for (const file of files) {
     const web = readFileSync(new URL(`../public/${file}`, import.meta.url), "utf8");
     const android = readFileSync(new URL(`../../android-native/app/src/main/assets/web/${file}`, import.meta.url), "utf8");
     assert.equal(web, android, file);
   }
+  for (const file of ["content/parchment-far.jpg", "content/parchment-mid.jpg", "content/parchment-close.jpg"]) {
+    const web = readFileSync(new URL(`../public/${file}`, import.meta.url));
+    const android = readFileSync(new URL(`../../android-native/app/src/main/assets/web/${file}`, import.meta.url));
+    assert.equal(Buffer.compare(web, android), 0, file);
+  }
+});
+
+test("the parchment map names the states, counties, towns, and water", () => {
+  const map = readFileSync(new URL("../public/frontier-map.svg", import.meta.url), "utf8");
+  for (const label of [
+    "AMBARINO", "NEW HANOVER", "WEST ELIZABETH", "LEMOYNE", "NEW AUSTIN",
+    "Grizzlies West", "Grizzlies East", "Cumberland Forest", "Heartlands", "Roanoke Ridge",
+    "Scarlett Meadows", "Bayou Nwa", "Bluewater Marsh", "Big Valley", "Tall Trees", "Great Plains",
+    "Hennigan's Stead", "Cholla Springs", "Rio Bravo", "Gaptooth Ridge",
+    "Valentine", "Strawberry", "Blackwater", "Rhodes", "Saint Denis", "Annesburg",
+    "Van Horn Trading Post", "Emerald Ranch", "Armadillo", "Tumbleweed", "Colter", "Wapiti",
+    "Flat Iron Lake", "Lannahechee River", "San Luis River"
+  ]) {
+    assert.equal(map.includes(label), true, label);
+  }
+  assert.equal(map.includes("GTABase"), false);
+  assert.equal(map.includes("state-borders"), true);
+  assert.equal(map.includes("county-borders"), true);
 });
 
 test("coach JSON keeps only confirmed structured advice", () => {

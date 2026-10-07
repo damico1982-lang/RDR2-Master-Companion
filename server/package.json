@@ -1,6 +1,6 @@
 {
   "name": "frontier-guide-backend",
-  "version": "1.5.0",
+  "version": "1.7.2",
   "description": "Protected live AI backend for the Frontier Guide Android companion",
   "private": true,
   "type": "module",
@@ -9,11 +9,12 @@
   },
   "scripts": {
     "start": "node server.mjs",
-    "check": "node --check server.mjs && node --check field-notes.mjs && node --check test/server.test.mjs",
+    "check": "node --check server.mjs && node --check field-notes.mjs && node --check steam.mjs && node --check link.mjs && node --check detect.mjs && node --check test/server.test.mjs && node --check test/steam.test.mjs",
     "test": "node --test"
   },
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "qrcode": "^1.5.4"
   }
 }

@@ -54,7 +54,8 @@ const state = {
   coachBusy: false,
   mapLocations: [],
   baseMap: [],
-  mapCategory: "All",
+  gazetteer: [],
+  disabledMapCategories: new Set(),
   selectedMapId: null,
   legendaries: [],
   animals: [],
@@ -161,15 +162,36 @@ async function requestJson(path, options = {}) {
   return data;
 }
 
+function navFor(view) {
+  if (view === "map" || view === "hidden") return "guide";
+  return view;
+}
+
 function setView(view) {
   closePreviewDialog();
   $$(".view").forEach(element => element.classList.remove("active"));
   const panel = $(`#${view}View`);
   panel?.classList.add("active");
+  const nav = navFor(view);
   $$(".bottom-nav button").forEach(button => {
-    button.classList.toggle("active", button.dataset.view === view);
+    const on = button.dataset.view === nav;
+    button.classList.toggle("active", on);
+    if (on) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
   });
   panel?.scrollIntoView({ block: "start", behavior: "auto" });
+  if (view === "map" || view === "hidden") {
+    const map = document.getElementById(view === "map" ? "fieldMap" : "hiddenMap");
+    requestAnimationFrame(() => map?.frontierReflow?.());
+  }
+  if (view === "progress") syncSteamProgress();
+  if (view === "settings") renderSteamStatus();
+  syncMapScrollLock();
+}
+
+function syncMapScrollLock() {
+  const open = Boolean(document.querySelector("#mapView.active, #hiddenView.active"));
+  document.documentElement.classList.toggle("map-open", open);
 }
 
 $$('[data-view]').forEach(button => {
@@ -841,6 +863,9 @@ function highlightEntry(id) {
     const card = document.querySelector(`[data-entry="${CSS.escape(id)}"]`);
     if (!card) return;
     card.classList.add("highlight");
+    const box = card.getBoundingClientRect();
+    if (box.width < 2 || box.height < 2) return;
+    if (document.documentElement.classList.contains("map-open")) return;
     card.scrollIntoView({ block: "center" });
   }, 40);
 }
@@ -894,7 +919,7 @@ function openEntry(view, id) {
 function showOnMap(id) {
   const item = state.mapLocations.find(entry => entry.id === id);
   if (!item || !modeMatches(item)) return;
-  state.mapCategory = item.category;
+  state.disabledMapCategories.delete(item.category);
   state.selectedMapId = id;
   setView("map");
   renderMapTags();
@@ -1081,62 +1106,267 @@ function renderHiddenTags() {
   if (!row) return;
   const categories = ["All", "Cave", "Waterfall", "Mine", "Underground", "Mountain"];
   if (!categories.includes(state.hiddenCategory)) state.hiddenCategory = "All";
-  row.replaceChildren();
+  const pool = state.hiddenPlaces.filter(modeMatches);
+  row.replaceChildren(sheetHandle(row));
   for (const category of categories) {
     const button = document.createElement("button");
-    button.className = `tag${state.hiddenCategory === category ? " active" : ""}`;
-    button.textContent = category;
+    button.type = "button";
+    const on = state.hiddenCategory === category;
+    button.className = `layer-row${on ? " is-on" : ""}`;
+    button.setAttribute("aria-pressed", on ? "true" : "false");
+    const check = document.createElement("span");
+    check.className = `filter-check${on ? " is-on" : ""}`;
+    check.textContent = on ? "✓" : "";
+    const label = document.createElement("span");
+    label.className = "layer-name";
+    label.textContent = category;
+    const tally = document.createElement("span");
+    tally.className = "layer-count";
+    tally.textContent = String(category === "All" ? pool.length : pool.filter(item => item.category === category).length);
+    button.append(check, label, tally);
     button.onclick = () => {
       state.hiddenCategory = category;
       state.selectedHiddenId = null;
       renderHiddenTags();
       renderHiddenMap();
       renderHiddenList();
-      $("#hiddenDetail").replaceChildren();
+      const detail = $("#hiddenDetail");
+      detail.classList.remove("is-open");
+      detail.style.transform = "";
+      detail.replaceChildren();
       const title = document.createElement("h3");
       title.textContent = "Select a hidden place";
       const body = document.createElement("p");
       body.textContent = "Tap a marker or a name in the list.";
-      $("#hiddenDetail").append(title, body);
+      detail.append(title, body);
     };
     row.appendChild(button);
   }
+  const legend = document.createElement("div");
+  legend.className = "map-legend";
+  const places = hiddenItems();
+  assignMapNumbers(places);
+  for (const item of [...places].sort((a, b) => a.mapNumber - b.mapNumber)) {
+    const entry = document.createElement("button");
+    entry.type = "button";
+    entry.className = "legend-item";
+    entry.textContent = `${item.mapNumber}  ${item.name}`;
+    entry.onclick = () => {
+      if (Number.isFinite(item.lat) && Number.isFinite(item.lng)) $("#hiddenMap")?.frontierZoomTo?.(3.6, item.x, item.y);
+      showHiddenDetail(item);
+    };
+    legend.appendChild(entry);
+  }
+  row.appendChild(legend);
+}
+
+function sourceLabel(url) {
+  const value = String(url || "");
+  if (/jeanropke\/(?:RDOMap|RDR2CollectorsMap)/i.test(value)) return "Jean Ropke RDOMap";
+  if (/the0neWhoKnocks/i.test(value)) return "Community map";
+  if (/pastebin\.com/i.test(value)) return "Coordinate list";
+  if (/gtaboss\.gg/i.test(value)) return "GTA Boss";
+  try {
+    const host = new URL(value).hostname.replace(/^www\./, "");
+    if (host === "github.com") return "GitHub";
+    return host;
+  } catch {
+    return "Published map";
+  }
+}
+
+function playerText(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return "";
+  const kept = raw.split(/(?<=[.!?])\s+/).filter(sentence => {
+    if (/^source\s+(id|name)\b/i.test(sentence)) return false;
+    if (/map frame/i.test(sentence)) return false;
+    if (/\b[a-z]+_[a-z0-9_]{2,}\b/i.test(sentence)) return false;
+    if (/sourceLat|sourceLng|least-squares|0\.01552|game-to-map|lat\/lng|plotted (position|point|lat)|converted (from|into|with)|RDOMap frame/i.test(sentence)) return false;
+    return true;
+  });
+  return kept.join(" ").trim();
+}
+
+function userNote(note) {
+  return playerText(note);
+}
+
+function placeRegion(item) {
+  const region = String(item.region || "").trim();
+  const landmark = String(item.landmark || "").trim();
+  let line = region;
+  if (landmark && !region.toLowerCase().includes(landmark.toLowerCase())) line = line ? `${line} · ${landmark}` : landmark;
+  const mode = item.mode === "story" ? "Story" : item.mode === "online" ? "Online" : item.mode === "either" ? "Story and Online" : "";
+  if (mode) line = line ? `${line} · ${mode}` : mode;
+  return line;
+}
+
+function howToGet(item) {
+  const parts = [];
+  const obtain = String(item.obtain || "").trim();
+  const steps = playerText(item.directions || item.enter || "");
+  if (obtain && (!steps || !steps.toLowerCase().includes(obtain.toLowerCase()))) parts.push(obtain.endsWith(".") ? obtain : `${obtain}.`);
+  if (steps) parts.push(steps);
+  if (item.chapter) parts.push(/[.!?]$/.test(String(item.chapter)) ? String(item.chapter) : `${item.chapter}.`);
+  if (item.price) parts.push(/[.!?]$/.test(String(item.price)) ? String(item.price) : `${item.price}.`);
+  return parts.join(" ");
+}
+
+function cardNotes(item) {
+  const parts = [];
+  if (item.breed || item.coat) {
+    const bits = [];
+    if (item.breed) bits.push(String(item.breed));
+    if (item.coat) bits.push(`${item.coat} coat`);
+    parts.push(`${bits.join(", ")}.`);
+  }
+  const note = userNote(item.note);
+  if (note) parts.push(note);
+  if (item.contents) parts.push(String(item.contents));
+  if (item.approximate || item.accuracyNote) parts.push(item.accuracyNote || "Approximate. No exact published coordinate.");
+  else if (!Number.isFinite(item.lat) && item.enter) parts.push("Not pinned. No published coordinate.");
+  return parts.join(" ");
+}
+
+function sheetLine(label, text) {
+  const p = document.createElement("p");
+  p.className = "map-detail-line";
+  const name = document.createElement("b");
+  name.textContent = label;
+  const body = document.createElement("span");
+  body.textContent = text;
+  p.append(name, body);
+  return p;
+}
+
+function sourceDetails(url) {
+  const href = String(url || "");
+  if (!/^https?:\/\//i.test(href)) return null;
+  const details = document.createElement("details");
+  details.className = "map-source";
+  const summary = document.createElement("summary");
+  summary.textContent = "Source";
+  const link = document.createElement("a");
+  link.href = href;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = sourceLabel(href);
+  details.append(summary, link);
+  return details;
+}
+
+function closeFieldCard() {
+  state.selectedMapId = null;
+  const detail = $("#mapDetail");
+  if (detail) {
+    detail.classList.remove("is-open");
+    detail.style.transform = "";
+  }
+  renderMap();
+}
+
+function closeHiddenCard() {
+  state.selectedHiddenId = null;
+  const detail = $("#hiddenDetail");
+  if (detail) {
+    detail.classList.remove("is-open");
+    detail.style.transform = "";
+  }
+  renderHiddenMap();
+}
+
+function bindSheetSwipe(detail) {
+  if (detail.dataset.swipeBound) return;
+  detail.dataset.swipeBound = "1";
+  let startY = 0;
+  let startX = 0;
+  let tracking = false;
+  let dragged = false;
+  detail.addEventListener("pointerdown", event => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (event.target.closest("button, a, input, textarea, summary, label")) return;
+    if (detail.scrollTop > 2 && !event.target.closest(".map-sheet-handle")) return;
+    tracking = true;
+    dragged = false;
+    startY = event.clientY;
+    startX = event.clientX;
+  });
+  detail.addEventListener("pointermove", event => {
+    if (!tracking) return;
+    const dy = event.clientY - startY;
+    const dx = event.clientX - startX;
+    if (dy > 6 && dy > Math.abs(dx)) {
+      dragged = true;
+      detail.style.transform = `translateY(${dy}px)`;
+    }
+  });
+  const end = event => {
+    if (!tracking) return;
+    tracking = false;
+    const dy = event.clientY - startY;
+    detail.style.transform = "";
+    if (dragged && dy > 56) detail._closeSheet?.();
+    dragged = false;
+  };
+  detail.addEventListener("pointerup", end);
+  detail.addEventListener("pointercancel", end);
+}
+
+function fillPlaceCard(detail, item, actions) {
+  detail.replaceChildren();
+  const style = styleFor(item.category);
+  const handle = document.createElement("div");
+  handle.className = "map-sheet-handle";
+  handle.setAttribute("aria-hidden", "true");
+  const kicker = document.createElement("div");
+  kicker.className = "map-detail-kicker";
+  const swatch = document.createElement("span");
+  swatch.className = "filter-swatch";
+  swatch.style.background = style.color;
+  swatch.style.color = style.ink;
+  swatch.append(markerGlyph(style.glyph));
+  const category = document.createElement("span");
+  category.textContent = style.label;
+  kicker.append(swatch, category);
+  const title = document.createElement("h3");
+  title.textContent = item.title || item.name || "Place";
+  detail.append(handle, kicker, title);
+  const region = placeRegion(item);
+  if (region) detail.append(sheetLine("Region", region));
+  const how = howToGet(item);
+  if (how) detail.append(sheetLine("How to get it", how));
+  const notes = cardNotes(item);
+  if (notes) detail.append(sheetLine("Notes", notes));
+  const source = sourceDetails(item.sourceUrl);
+  if (source) detail.append(source);
+  if (actions) detail.append(actions);
+  detail.classList.add("is-open");
+  const sheet = detail.closest(".map-panel")?.querySelector(".map-sheet");
+  if (sheet) {
+    sheet.hidden = true;
+    sheet.closest(".map-frame")?.querySelector(".map-layers-toggle")?.setAttribute("aria-expanded", "false");
+  }
+  bindSheetSwipe(detail);
 }
 
 function showHiddenDetail(item) {
   state.selectedHiddenId = item.id;
   renderHiddenMap();
   const detail = $("#hiddenDetail");
-  detail.replaceChildren();
-  const title = document.createElement("h3");
-  title.textContent = item.name;
-  detail.appendChild(title);
-  addField(detail, "Region", `${item.region}. ${item.landmark}.`);
-  addField(detail, "How to enter", item.enter);
-  addField(detail, "What's there", item.contents);
-  addField(detail, "Grid", `Schematic ${item.x}, ${item.y}. X increases east and Y increases south.`);
-  detail.appendChild(foundButton(item.id));
+  detail._closeSheet = closeHiddenCard;
+  const actions = document.createElement("div");
+  actions.className = "map-actions";
+  actions.appendChild(foundButton(item.id));
+  actions.appendChild(actionButton("ghost compact map-detail-close", "Close card", closeHiddenCard));
+  fillPlaceCard(detail, item, actions);
   highlightEntry(item.id);
 }
 
 function renderHiddenMap() {
-  const layer = $("#hiddenMarkers");
-  if (!layer) return;
-  layer.replaceChildren();
-  for (const placed of spreadPins(hiddenItems())) {
-    const item = placed.item;
-    const marker = document.createElement("button");
-    marker.className = `map-marker ${String(item.category || "").toLowerCase()}${state.selectedHiddenId === item.id ? " active" : ""}`;
-    marker.style.left = `${placed.x}%`;
-    marker.style.top = `${placed.y}%`;
-    marker.title = item.name;
-    marker.setAttribute("aria-label", item.name);
-    const label = document.createElement("span");
-    label.textContent = item.category === "Waterfall" ? "W" : item.category.slice(0, 1);
-    marker.appendChild(label);
-    marker.onclick = () => showHiddenDetail(item);
-    layer.appendChild(marker);
-  }
+  const items = hiddenItems();
+  assignMapNumbers(items);
+  paintLeaflet($("#hiddenMap"), items.filter(item => Number.isFinite(item.lat) && Number.isFinite(item.lng)), state.selectedHiddenId, showHiddenDetail);
 }
 
 function renderHiddenList() {
@@ -1627,75 +1857,141 @@ async function loadJson(path) {
 
 async function loadMap() {
   state.baseMap = await loadJson("content/map.json");
+  try {
+    const response = await fetch("content/gazetteer.json");
+    state.gazetteer = response.ok ? await response.json() : [];
+    if (!Array.isArray(state.gazetteer)) state.gazetteer = [];
+  } catch {
+    state.gazetteer = [];
+  }
   rebuildMap();
+  for (const id of ["fieldMap", "hiddenMap"]) document.getElementById(id)?._drawPins?.();
 }
 
 function rebuildMap() {
-  const legendaryMarkers = state.legendaries
-    .filter(item => Number.isFinite(item.x) && Number.isFinite(item.y))
-    .map(item => ({
-      id: `leg-${item.id}`,
-      category: "Legendary",
-      mode: item.mode,
-      title: item.name,
-      region: item.region,
-      x: item.x,
-      y: item.y,
-      directions: `${item.landmark}. ${item.conditions}`,
-      note: item.unlock,
-      linkView: "legendary",
-      linkId: item.id,
-      linkLabel: "Open animal page"
-    }));
   const secretMarkers = state.secrets.flatMap(item => (item.markers || [])
-    .filter(marker => Number.isFinite(marker.x) && Number.isFinite(marker.y))
+    .filter(marker => Number.isFinite(marker.lat) && Number.isFinite(marker.lng))
+    .filter(marker => !state.baseMap.some(pin => pin.id === marker.id))
     .map(marker => ({
       id: marker.id,
       category: "Secrets",
       mode: item.mode,
       title: marker.title,
       region: marker.region,
+      lat: marker.lat,
+      lng: marker.lng,
       x: marker.x,
       y: marker.y,
+      sourceUrl: marker.sourceUrl,
+      sourceLat: marker.sourceLat,
+      sourceLng: marker.sourceLng,
+      approximate: marker.approximate,
+      accuracyNote: marker.accuracyNote,
       directions: marker.directions,
       note: marker.note,
       linkView: "secrets",
       linkId: item.id,
       linkLabel: "Open secret"
     })));
-  state.mapLocations = [...state.baseMap, ...legendaryMarkers, ...secretMarkers];
+  state.mapLocations = [...state.baseMap, ...secretMarkers];
   renderMapTags();
   renderMap();
 }
 
+function mapCategoryOn(category) {
+  return !state.disabledMapCategories.has(category);
+}
+
+function closeLayerSheet(sheet) {
+  if (!sheet) return;
+  sheet.hidden = true;
+  sheet.closest(".map-frame")?.querySelector(".map-layers-toggle")?.setAttribute("aria-expanded", "false");
+}
+
+function sheetHandle(sheet) {
+  const handle = document.createElement("button");
+  handle.type = "button";
+  handle.className = "map-sheet-handle";
+  handle.setAttribute("aria-label", "Close layers");
+  handle.onclick = () => closeLayerSheet(sheet);
+  return handle;
+}
+
 function renderMapTags() {
+  const sheet = $("#mapTags");
+  if (!sheet) return;
   const visible = state.mapLocations.filter(modeMatches);
-  const categories = ["All", ...new Set(visible.map(item => item.category))];
-  if (!categories.includes(state.mapCategory)) state.mapCategory = "All";
-  $("#mapTags").replaceChildren();
+  const present = [...new Set(visible.map(item => item.category))];
+  const categories = MARKER_ORDER.filter(category => present.includes(category));
+  for (const category of present) if (!categories.includes(category)) categories.push(category);
+  const allOn = categories.length > 0 && categories.every(mapCategoryOn);
+  sheet.replaceChildren(sheetHandle(sheet));
+  const all = document.createElement("button");
+  all.type = "button";
+  all.className = `layer-row layer-all${allOn ? " is-on" : ""}`;
+  all.setAttribute("aria-pressed", allOn ? "true" : "false");
+  const mark = document.createElement("span");
+  mark.className = `filter-check${allOn ? " is-on" : ""}`;
+  mark.textContent = allOn ? "✓" : "";
+  const name = document.createElement("span");
+  name.className = "layer-name";
+  name.textContent = allOn ? "None" : "All";
+  const total = document.createElement("span");
+  total.className = "layer-count";
+  total.textContent = String(visible.length);
+  all.append(mark, name, total);
+  all.onclick = () => {
+    if (allOn) categories.forEach(category => state.disabledMapCategories.add(category));
+    else state.disabledMapCategories.clear();
+    state.selectedMapId = null;
+    $("#mapDetail")?.classList.remove("is-open");
+    renderMapTags();
+    renderMap();
+  };
+  sheet.appendChild(all);
+  const legend = document.createElement("div");
+  legend.className = "map-legend";
   for (const category of categories) {
+    const style = styleFor(category);
+    const count = visible.filter(item => item.category === category).length;
+    const on = mapCategoryOn(category);
     const button = document.createElement("button");
-    button.className = `tag${state.mapCategory === category ? " active" : ""}`;
-    button.textContent = category;
+    button.type = "button";
+    button.className = `layer-row${on ? " is-on" : ""}`;
+    button.setAttribute("aria-pressed", on ? "true" : "false");
+    const check = document.createElement("span");
+    check.className = `filter-check${on ? " is-on" : ""}`;
+    check.textContent = on ? "✓" : "";
+    const swatch = document.createElement("span");
+    swatch.className = "filter-swatch";
+    swatch.style.background = style.color;
+    swatch.style.color = style.ink;
+    swatch.append(markerGlyph(style.glyph));
+    const label = document.createElement("span");
+    label.className = "layer-name";
+    label.textContent = style.label;
+    const tally = document.createElement("span");
+    tally.className = "layer-count";
+    tally.textContent = String(count);
+    button.append(check, swatch, label, tally);
     button.onclick = () => {
-      state.mapCategory = category;
+      if (on) state.disabledMapCategories.add(category);
+      else state.disabledMapCategories.delete(category);
       state.selectedMapId = null;
+      $("#mapDetail")?.classList.remove("is-open");
       renderMapTags();
       renderMap();
     };
-    $("#mapTags").appendChild(button);
+    legend.appendChild(button);
   }
+  sheet.appendChild(legend);
 }
 
 function showMapDetail(item) {
   state.selectedMapId = item.id;
   renderMap();
   const detail = $("#mapDetail");
-  detail.replaceChildren();
-  const title = document.createElement("h3");
-  title.textContent = item.title;
-  const body = document.createElement("p");
-  body.textContent = `${item.region} • ${item.mode}\n\n${item.directions}\n\n${item.note}`;
+  detail._closeSheet = closeFieldCard;
   const actions = document.createElement("div");
   actions.className = "map-actions";
   const ask = document.createElement("button");
@@ -1711,31 +2007,23 @@ function showMapDetail(item) {
     actions.appendChild(actionButton("ghost compact", item.linkLabel || "Open guide entry", () => openEntry(item.linkView, item.linkId)));
   }
   actions.appendChild(foundButton(item.id));
-  const grid = document.createElement("p");
-  grid.textContent = `Schematic grid ${item.x}, ${item.y}. X increases east and Y increases south. This is a companion coordinate, not Rockstar's map.`;
-  detail.append(title, body, grid, actions);
+  actions.appendChild(actionButton("ghost compact map-detail-close", "Close card", closeFieldCard));
+  fillPlaceCard(detail, item, actions);
+}
+
+function assignMapNumbers(items) {
+  const ordered = [...items].sort((a, b) => (Number(a.y) - Number(b.y)) || (Number(a.x) - Number(b.x)) || String(a.title || a.name || "").localeCompare(String(b.title || b.name || "")));
+  ordered.forEach((item, index) => { item.mapNumber = index + 1; });
+  return ordered;
 }
 
 function renderMap() {
   const items = state.mapLocations.filter(item => {
-    const categoryMatch = state.mapCategory === "All" || item.category === state.mapCategory;
+    const categoryMatch = mapCategoryOn(item.category);
     return categoryMatch && modeMatches(item);
   });
-  $("#mapMarkers").replaceChildren();
-  spreadPins(items).forEach(({ item, x, y }, index) => {
-    const marker = document.createElement("button");
-    const kind = item.category === "Legendary" ? " legendary" : item.category === "Secrets" ? " secret" : "";
-    marker.className = `map-marker${kind}${state.selectedMapId === item.id ? " active" : ""}`;
-    marker.style.left = `${x}%`;
-    marker.style.top = `${y}%`;
-    marker.title = item.title;
-    marker.setAttribute("aria-label", item.title);
-    const label = document.createElement("span");
-    label.textContent = item.category === "Legendary" ? "★" : item.category === "Secrets" ? "◆" : String(index + 1);
-    marker.appendChild(label);
-    marker.onclick = () => showMapDetail(item);
-    $("#mapMarkers").appendChild(marker);
-  });
+  assignMapNumbers(items);
+  paintLeaflet($("#fieldMap"), items.filter(item => Number.isFinite(item.lat) && Number.isFinite(item.lng)), state.selectedMapId, showMapDetail);
 }
 
 function setConnectionState(kind, label) {
@@ -1771,9 +2059,11 @@ async function checkStatus(showMessage = false) {
       return false;
     }
     if (!data.configured) {
-      setConnectionState("warning", "Server needs API key");
-      if (showMessage) $("#settingsMsg").textContent = "Server found, but OPENAI_API_KEY is not configured on the host.";
-      return false;
+      setConnectionState("", "Offline ready");
+      const status = $("#onlineDot");
+      if (status) status.title = "The guide is ready. Live answers stay off until the server has an AI key.";
+      if (showMessage) $("#settingsMsg").textContent = "Server found. OPENAI_API_KEY is not configured, so live answers stay off. The guide and map still work.";
+      return true;
     }
 
     setConnectionState("online", "AI connected");
@@ -1965,23 +2255,64 @@ $("#checkUpdates").onclick = contentUpdate;
 if ($("#applyUpdate")) $("#applyUpdate").onclick = applyContentUpdate;
 if ($("#rollbackUpdate")) $("#rollbackUpdate").onclick = rollbackContent;
 
-function spreadPins(items) {
-  const placed = [];
-  return items.map(item => {
-    let x = Number(item.x);
-    let y = Number(item.y);
-    let spin = 0;
-    while (placed.some(pin => Math.abs(pin.x - x) < 3 && Math.abs(pin.y - y) < 3) && spin < 6) {
-      const angle = spin * 1.15;
-      const radius = 3.2 + spin * 0.45;
-      x = Number(item.x) + Math.cos(angle) * radius;
-      y = Number(item.y) + Math.sin(angle) * radius;
-      spin += 1;
-    }
-    const point = { x: Math.max(2, Math.min(98, x)), y: Math.max(2, Math.min(98, y)) };
-    placed.push(point);
-    return { item, x: point.x, y: point.y };
-  });
+function mapViewportScale(viewport) {
+  const value = Number(viewport && viewport.dataset.scale || 1);
+  return Number.isFinite(value) && value > 0 ? value : 1;
+}
+
+function markerKind(item) {
+  const classes = [];
+  if (item.category === "Legendary") classes.push("legendary");
+  if (item.category === "Secrets") classes.push("secret");
+  const hidden = String(item.category || "").toLowerCase();
+  if (hidden === "cave" || hidden === "waterfall" || hidden === "mine" || hidden === "underground" || hidden === "mountain") classes.push(hidden);
+  const slug = String(item.category || "pin").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  classes.push(`kind-${slug}`);
+  return classes.length ? ` ${classes.join(" ")}` : "";
+}
+
+const MARKER_ORDER = ["Gold", "Treasure", "Legendary", "Fish", "Secrets", "Weapons", "Ammo", "Horses", "Money", "Online Gold", "Valuables"];
+
+const MARKER_STYLES = {
+  Gold: { color: "#e2b23a", ink: "#2c2218", glyph: "bars", label: "Gold bars" },
+  Treasure: { color: "#e07a2f", ink: "#2c2218", glyph: "xmark", label: "Treasure" },
+  Legendary: { color: "#8e1e24", ink: "#f8efe0", glyph: "paw", label: "Legendary animals" },
+  Fish: { color: "#1f7a78", ink: "#f8efe0", glyph: "fish", label: "Legendary fish" },
+  Secrets: { color: "#6d4ea3", ink: "#f8efe0", glyph: "eye", label: "Secrets" },
+  Weapons: { color: "#4d6278", ink: "#f8efe0", glyph: "guns", label: "Weapons" },
+  Ammo: { color: "#2f6b3a", ink: "#f8efe0", glyph: "bullet", label: "Ammo" },
+  Horses: { color: "#8a4b2f", ink: "#f8efe0", glyph: "horse", label: "Rare horses" },
+  Money: { color: "#c4a35a", ink: "#2c2218", glyph: "coin", label: "Money" },
+  "Online Gold": { color: "#d4a017", ink: "#2c2218", glyph: "coin", label: "Online gold" },
+  Valuables: { color: "#b08d57", ink: "#2c2218", glyph: "coin", label: "Valuables" }
+};
+
+const MARKER_GLYPHS = {
+  bars: '<path fill="currentColor" d="M4 6.5h16v2.4H4zm0 4.3h16v2.4H4zm0 4.3h16V18H4z"/>',
+  xmark: '<path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/>',
+  paw: '<circle cx="7.5" cy="8" r="1.7" fill="currentColor"/><circle cx="12" cy="6.4" r="1.7" fill="currentColor"/><circle cx="16.5" cy="8" r="1.7" fill="currentColor"/><ellipse cx="12" cy="15.2" rx="4.2" ry="3.1" fill="currentColor"/>',
+  fish: '<path fill="currentColor" d="M3 12l5.2-3.6c2.6-1.2 6.4-1.3 9.4.4 1.2 1.6 1.3 3.6 0 5.2-3 1.8-6.8 1.7-9.4.4L3 12z"/><circle cx="15.2" cy="12" r=".8" fill="#2a1c12"/>',
+  eye: '<ellipse cx="12" cy="12" rx="7" ry="4" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2" fill="currentColor"/>',
+  cave: '<path fill="currentColor" d="M3 18V9.5L8 4l4 3.2L16 4l5 5.5V18H3z"/>',
+  guns: '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 16.5l8.5-8.5M6.5 6.5h3.2l2 2M15 4.5l4.5 4.5-2.2 2.2-4.5-4.5zM5 18l2.6-.8"/>',
+  bullet: '<path fill="currentColor" d="M9.2 4h5.6l.8 3.2H8.4zM8.2 7.2h7.6V17l-3.8 2.4L8.2 17z"/>',
+  horse: '<path fill="currentColor" d="M8 16.5c.2-2.6 2-4.6 4.6-5.4.2-1.8 1.4-3.6 3.2-4.2.7 1.1.5 2.2-.3 2.9 1.5.5 2.6 1.5 3 2.8l1.6 1.1-1.9.7.5 2.1h-2.3l-.7-2c-1 .5-2.2.7-3.2.4l-.6 2.2H9.2l.7-2.4C8.4 15.2 8 15.8 8 16.5z"/>',
+  coin: '<circle cx="12" cy="12" r="6.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M12 8.2v7.6M10.2 10.1c.5-.8 3.2-.9 3.4.5.2 1.1-.8 1.4-1.8 1.6s-1.7.6-1.5 1.6c.3 1.2 2.8 1.2 3.4.2"/>'
+};
+
+function styleFor(category) {
+  if (category === "Cave" || category === "Waterfall" || category === "Mine" || category === "Underground" || category === "Mountain") {
+    return { color: "#5c4030", ink: "#f8efe0", glyph: "cave", label: category };
+  }
+  return MARKER_STYLES[category] || { color: "#4a3828", ink: "#f8efe0", glyph: "xmark", label: category || "Place" };
+}
+
+function markerGlyph(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  svg.innerHTML = MARKER_GLYPHS[name] || MARKER_GLYPHS.xmark;
+  return svg;
 }
 
 function foundIds() {
@@ -1996,104 +2327,624 @@ function foundButton(id) {
     else ids.add(id);
     localStorage.setItem("fg_found", JSON.stringify([...ids]));
     button.textContent = ids.has(id) ? "Marked found" : "Mark found";
+    renderMap();
+    renderHiddenMap();
   });
   return button;
 }
 
-function reconcileModeSelection() {
-  const selected = state.mapLocations.find(entry => entry.id === state.selectedMapId);
-  if (state.selectedMapId && (!selected || !modeMatches(selected))) {
-    state.selectedMapId = null;
-    const detail = $("#mapDetail");
-    if (detail) {
-      detail.replaceChildren();
-      const title = document.createElement("h3");
-      title.textContent = "Select a marker";
-      const body = document.createElement("p");
-      body.textContent = "That pin does not match this play mode. Choose a marker that does.";
-      detail.append(title, body);
-    }
-    renderMap();
+const MAP_FRAME = typeof L === "undefined" ? null : L.latLngBounds([-144, 0], [0, 176]);
+function accuracyRequested() {
+  try {
+    if (new URLSearchParams(location.search).get("accuracy") === "1") return true;
+    return localStorage.getItem("fg_accuracy") === "1";
+  } catch {
+    return false;
   }
-  const place = state.hiddenPlaces.find(entry => entry.id === state.selectedHiddenId);
-  if (state.selectedHiddenId && (!place || !modeMatches(place))) {
-    state.selectedHiddenId = null;
-    const detail = $("#hiddenDetail");
-    if (detail) {
-      detail.replaceChildren();
-      const title = document.createElement("h3");
-      title.textContent = "Select a hidden place";
-      const body = document.createElement("p");
-      body.textContent = "That place does not match this play mode.";
-      detail.append(title, body);
+}
+const ACCURACY_MAP = accuracyRequested();
+const STATE_SPAN = { AMBARINO: 52, "NEW HANOVER": 44, "WEST ELIZABETH": 40, LEMOYNE: 30, "NEW AUSTIN": 40 };
+const WATER_NAMES = new Set(["Flat Iron Lake", "San Luis River", "Lannahechee River"]);
+const TOWN_NAMES = new Set(["Colter", "Wapiti", "Valentine", "Emerald Ranch", "Strawberry", "Blackwater", "Rhodes", "Saint Denis", "Annesburg", "Van Horn Trading Post", "Lagras", "Armadillo", "Tumbleweed"]);
+let labelMeasure;
+
+function labelCatalog() {
+  return (state.gazetteer || []).map(item => {
+    const name = item.name;
+    if (STATE_SPAN[name]) return { ...item, kind: "state", priority: 4, span: STATE_SPAN[name], text: name, tracking: 0.08 };
+    if (WATER_NAMES.has(name)) return { ...item, kind: "water", priority: 2, span: name.includes("Lake") ? 26 : 20, text: name, tracking: 0.03 };
+    if (TOWN_NAMES.has(name)) {
+      const text = name === "Van Horn Trading Post" ? "VAN HORN" : name.toUpperCase();
+      return { ...item, kind: "town", priority: 1, span: 12, text, tracking: 0.05 };
     }
-    renderHiddenMap();
-    renderHiddenList();
+    return { ...item, kind: "county", priority: 3, span: 16, text: name, tracking: 0.015 };
+  });
+}
+
+function measureLabel(entry, fontPx) {
+  if (!labelMeasure) labelMeasure = document.createElement("canvas").getContext("2d");
+  const weight = entry.kind === "water" || entry.kind === "county" ? 600 : 700;
+  const style = entry.kind === "water" ? "italic" : "normal";
+  labelMeasure.font = `${style} ${weight} ${fontPx}px "Liberation Serif", Georgia, serif`;
+  const raw = labelMeasure.measureText(entry.text).width;
+  return {
+    w: raw + entry.tracking * fontPx * Math.max(0, entry.text.length - 1),
+    h: fontPx * 1.2
+  };
+}
+
+function layoutMapLabels(viewport) {
+  const map = viewport?.frontierMap;
+  if (!map?._loaded) return;
+  let layer = viewport.querySelector(":scope > .map-labels");
+  if (!layer) {
+    layer = document.createElement("div");
+    layer.className = "map-labels";
+    layer.setAttribute("aria-hidden", "true");
+    viewport.appendChild(layer);
+  }
+  const width = viewport.clientWidth;
+  const height = viewport.clientHeight;
+  const fit = Number.isFinite(viewport._fitZoom) ? viewport._fitZoom : map.getZoom();
+  const ratio = Math.pow(2, map.getZoom() - fit);
+  const tier = !Number.isFinite(ratio) || ratio < 1.8 ? "far" : ratio < 3.6 ? "mid" : "close";
+  if (width < 20 || height < 20) return;
+  const origin = map.latLngToContainerPoint([0, 0]);
+  const step = map.latLngToContainerPoint([0, 10]);
+  const unit = Math.hypot(step.x - origin.x, step.y - origin.y) / 10;
+  const show = entry => tier === "far" ? entry.kind === "state" : tier === "mid" ? entry.kind === "county" || entry.kind === "water" : entry.kind === "town";
+  const candidates = labelCatalog().filter(show).sort((a, b) => b.priority - a.priority || a.text.length - b.text.length);
+  const placed = [];
+  const skipped = [];
+  const frag = document.createDocumentFragment();
+  const pad = 3;
+  const seeds = [];
+  for (const entry of candidates) {
+    const point = map.latLngToContainerPoint([entry.lat, entry.lng]);
+    if (point.x < -20 || point.y < -20 || point.x > width + 20 || point.y > height + 20) {
+      skipped.push(`${entry.text}:outside`);
+      continue;
+    }
+    const cap = entry.kind === "town" ? 13 : width * (entry.kind === "state" ? 0.4 : 0.32);
+    const fitted = Math.min(cap, entry.span * unit * 0.9) / Math.max(1, measureLabel(entry, 100).w) * 100;
+    const readable = entry.kind === "state" ? 11 : 8;
+    const font = Math.min(Math.max(fitted, readable), entry.kind === "town" ? 13 : cap / Math.max(1, measureLabel(entry, 100).w) * 100);
+    if (font < 8) {
+      skipped.push(`${entry.text}:tiny:${fitted.toFixed(1)}`);
+      continue;
+    }
+    seeds.push({ entry, point, font });
+  }
+  const overlaps = (a, b) => a.left < b.right + 1 && a.right > b.left + 1 && a.top < b.bottom + 1 && a.bottom > b.top + 1;
+  const boxAt = (seed, font, point) => {
+    const size = measureLabel(seed.entry, font);
+    if (size.w > width - pad * 2 || size.h > height - pad * 2 || font < 8) return null;
+    const cx = Math.min(width - pad - size.w / 2, Math.max(pad + size.w / 2, point.x));
+    const cy = Math.min(height - pad - size.h / 2, Math.max(pad + size.h / 2, point.y));
+    return {
+      left: cx - size.w / 2, top: cy - size.h / 2, right: cx + size.w / 2, bottom: cy + size.h / 2,
+      cx, cy, font, kind: seed.entry.kind, priority: seed.entry.priority, name: seed.entry.text, entry: seed.entry,
+      ax: point.x, ay: point.y
+    };
+  };
+  let live = seeds.map(seed => ({ ...seed, point: { ...seed.point } }));
+  let boxes = [];
+  for (let attempt = 0; attempt < 16; attempt += 1) {
+    boxes = live.map(seed => boxAt(seed, seed.font, seed.point)).filter(Boolean);
+    let moved = false;
+    for (let i = 0; i < boxes.length; i += 1) {
+      for (let j = i + 1; j < boxes.length; j += 1) {
+        const a = boxes[i];
+        const b = boxes[j];
+        if (!overlaps(a, b)) continue;
+        const dx = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        const dy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        const sx = a.cx <= b.cx ? -1 : 1;
+        const sy = a.cy <= b.cy ? -1 : 1;
+        const targetA = live.find(seed => seed.entry === a.entry);
+        const targetB = live.find(seed => seed.entry === b.entry);
+        if (dx < dy) {
+          targetA.point.x += sx * (dx / 2 + 1);
+          targetB.point.x -= sx * (dx / 2 + 1);
+        } else {
+          targetA.point.y += sy * (dy / 2 + 1);
+          targetB.point.y -= sy * (dy / 2 + 1);
+        }
+        moved = true;
+      }
+    }
+    if (!moved && boxes.length === live.length) break;
+    if (!moved) {
+      const smallest = [...live].sort((a, b) => a.font - b.font || b.entry.text.length - a.entry.text.length)[0];
+      skipped.push(`${smallest.entry.text}:collision`);
+      live = live.filter(seed => seed !== smallest);
+      continue;
+    }
+    if (attempt >= 8) live.forEach(seed => { seed.font = Math.max(8, seed.font * 0.92); });
+  }
+  const keep = [];
+  for (const box of boxes.sort((a, b) => b.priority - a.priority || a.name.length - b.name.length)) {
+    if (keep.some(other => overlaps(box, other))) {
+      skipped.push(`${box.name}:collision`);
+      continue;
+    }
+    keep.push(box);
+  }
+  for (const chosen of keep) {
+    placed.push(chosen);
+    const node = document.createElement("div");
+    node.className = `map-label kind-${chosen.kind}`;
+    node.textContent = chosen.name;
+    node.style.left = `${chosen.cx}px`;
+    node.style.top = `${chosen.cy}px`;
+    node.style.fontSize = `${chosen.font.toFixed(2)}px`;
+    node.style.letterSpacing = `${chosen.entry.tracking}em`;
+    frag.appendChild(node);
+  }
+  layer.replaceChildren(frag);
+  settleLabelEdges(viewport);
+  const viewBox = viewport.getBoundingClientRect();
+  viewport._labelSkips = skipped;
+  viewport._labelBoxes = [...viewport.querySelectorAll(":scope > .map-labels .map-label")]
+    .filter(node => node.classList.contains("kind-state") || node.classList.contains("kind-county"))
+    .map(node => {
+      const rect = node.getBoundingClientRect();
+      return { left: rect.left - viewBox.left, top: rect.top - viewBox.top, right: rect.right - viewBox.left, bottom: rect.bottom - viewBox.top };
+    });
+}
+
+function settleLabelEdges(viewport) {
+  const view = viewport.getBoundingClientRect();
+  const margin = 2;
+  for (const node of [...viewport.querySelectorAll(":scope > .map-labels .map-label")]) {
+    let rect = node.getBoundingClientRect();
+    if (rect.width > view.width - margin * 2 || rect.height > view.height - margin * 2) {
+      node.remove();
+      continue;
+    }
+    let shiftX = 0;
+    let shiftY = 0;
+    if (rect.left < view.left + margin) shiftX = view.left + margin - rect.left;
+    else if (rect.right > view.right - margin) shiftX = view.right - margin - rect.right;
+    if (rect.top < view.top + margin) shiftY = view.top + margin - rect.top;
+    else if (rect.bottom > view.bottom - margin) shiftY = view.bottom - margin - rect.bottom;
+    if (shiftX || shiftY) {
+      node.style.left = `${parseFloat(node.style.left) + shiftX}px`;
+      node.style.top = `${parseFloat(node.style.top) + shiftY}px`;
+      rect = node.getBoundingClientRect();
+    }
+    const clipped = rect.left < view.left - 1 || rect.right > view.right + 1 || rect.top < view.top - 1 || rect.bottom > view.bottom + 1;
+    if (clipped) node.remove();
   }
 }
 
-function mountSchematicMap(viewport) {
-  if (!viewport || viewport.dataset.zoomReady) return;
-  viewport.dataset.zoomReady = "1";
-  const stage = document.createElement("div");
-  stage.className = "map-stage";
-  while (viewport.firstChild) stage.appendChild(viewport.firstChild);
-  viewport.appendChild(stage);
-  let scale = 1;
-  let x = 0;
-  let y = 0;
-  let drag = null;
-  let pinch = null;
-  const pointers = new Map();
-  const apply = () => { stage.style.transform = `translate(${x}px, ${y}px) scale(${scale})`; };
-  const tools = document.createElement("div");
-  tools.className = "map-tools";
-  tools.append(
-    actionButton("ghost compact", "Zoom in", () => { scale = Math.min(4, +(scale * 1.25).toFixed(3)); apply(); }),
-    actionButton("ghost compact", "Zoom out", () => { scale = Math.max(1, +(scale / 1.25).toFixed(3)); if (scale === 1) { x = 0; y = 0; } apply(); }),
-    actionButton("ghost compact", "Reset map", () => { scale = 1; x = 0; y = 0; apply(); })
-  );
-  viewport.parentElement?.insertBefore(tools, viewport);
-  const distance = () => {
-    const points = [...pointers.values()];
-    if (points.length < 2) return 0;
-    return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
-  };
-  viewport.addEventListener("pointerdown", event => {
-    viewport.setPointerCapture?.(event.pointerId);
-    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    if (pointers.size === 1) drag = { x: event.clientX, y: event.clientY, ox: x, oy: y };
-    if (pointers.size === 2) pinch = { dist: distance() || 1, scale };
+function avoidLabelBoxes(map, lat, lng, boxes, clearance = 16) {
+  if (!boxes?.length) return [lat, lng];
+  let point = map.latLngToContainerPoint([lat, lng]);
+  for (let pass = 0; pass < 5; pass += 1) {
+    const hit = boxes.find(box => point.x + clearance > box.left && point.x - clearance < box.right && point.y + clearance > box.top && point.y - clearance < box.bottom);
+    if (!hit) break;
+    const spots = [
+      { x: point.x, y: hit.bottom + clearance },
+      { x: point.x, y: hit.top - clearance },
+      { x: hit.right + clearance, y: point.y },
+      { x: hit.left - clearance, y: point.y }
+    ];
+    spots.sort((a, b) => (a.x - point.x) ** 2 + (a.y - point.y) ** 2 - ((b.x - point.x) ** 2 + (b.y - point.y) ** 2));
+    point = spots[0];
+  }
+  const next = map.containerPointToLatLng(point);
+  return [next.lat, next.lng];
+}
+
+function auditMapLabels(rootId = "fieldMap") {
+  const viewport = document.getElementById(rootId);
+  const labels = [...(viewport?.querySelectorAll(".map-label") || [])].map(node => {
+    const rect = node.getBoundingClientRect();
+    const view = viewport.getBoundingClientRect();
+    return {
+      name: node.textContent,
+      left: rect.left,
+      top: rect.top,
+      right: rect.right,
+      bottom: rect.bottom,
+      clipped: rect.left < view.left - 1 || rect.right > view.right + 1 || rect.top < view.top - 1 || rect.bottom > view.bottom + 1
+    };
   });
-  viewport.addEventListener("pointermove", event => {
-    if (!pointers.has(event.pointerId)) return;
-    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    if (pointers.size >= 2 && pinch) {
-      scale = Math.min(4, Math.max(1, pinch.scale * (distance() / pinch.dist)));
-      if (scale === 1) { x = 0; y = 0; }
-      apply();
+  const overlaps = [];
+  for (let i = 0; i < labels.length; i += 1) {
+    for (let j = i + 1; j < labels.length; j += 1) {
+      const a = labels[i];
+      const b = labels[j];
+      if (a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1) overlaps.push([a.name, b.name]);
+    }
+  }
+  return { overlaps, clipped: labels.filter(item => item.clipped).map(item => item.name), count: labels.length, names: labels.map(item => item.name) };
+}
+window.auditMapLabels = auditMapLabels;
+
+function paintLeaflet(viewport, items, activeId, onSelect) {
+  if (!viewport) return;
+  viewport._pinItems = items;
+  viewport._pinActive = activeId;
+  viewport._pinSelect = onSelect;
+  drawPins(viewport);
+}
+
+function drawPins(viewport) {
+  const map = viewport?.frontierMap;
+  if (!map || !viewport._pinItems || !map._loaded) return;
+  if (map._pinLayer) map.removeLayer(map._pinLayer);
+  const items = viewport._pinItems;
+  const activeId = viewport._pinActive;
+  const onSelect = viewport._pinSelect;
+  const found = foundIds();
+  const layer = L.layerGroup();
+  const detail = viewport.dataset.detail || "far";
+  const stacks = new Map();
+  const addIcon = (item, lat, lng) => {
+    const stacksKey = `${lat}|${lng}`;
+    const index = stacks.get(stacksKey) || 0;
+    stacks.set(stacksKey, index + 1);
+    const style = styleFor(item.category);
+    const angle = index * 1.15;
+    const radius = index === 0 ? 0 : 12 + (index - 1) * 3;
+    const icon = L.divIcon({
+      className: `map-marker${markerKind(item)}${activeId === item.id ? " active" : ""}${found.has(item.id) ? " found" : ""}`,
+      html: `<svg viewBox="0 0 24 24" aria-hidden="true">${MARKER_GLYPHS[style.glyph] || MARKER_GLYPHS.xmark}</svg>`,
+      iconSize: [22, 22],
+      iconAnchor: [11 - Math.cos(angle) * radius, 11 - Math.sin(angle) * radius]
+    });
+    const marker = L.marker([lat, lng], { icon, pane: "pins", keyboard: false, bubblingMouseEvents: false });
+    marker.on("click", event => {
+      if (event.originalEvent) event.originalEvent.stopPropagation();
+      onSelect(item);
+    });
+    marker.on("add", () => {
+      const element = marker.getElement();
+      if (!element) return;
+      element.style.background = style.color;
+      element.style.color = style.ink;
+      const name = item.title || item.name || "Marker";
+      element.title = name;
+      element.setAttribute("aria-label", name);
+    });
+    layer.addLayer(marker);
+  };
+  layoutMapLabels(viewport);
+  const labelBoxes = detail === "close" ? [] : (viewport._labelBoxes || []);
+  if (detail !== "close") {
+    const groups = new Map();
+    for (const item of items) {
+      const point = map.latLngToContainerPoint([item.lat, item.lng]);
+      const key = `${Math.round(point.x / 36)}:${Math.round(point.y / 36)}`;
+      const group = groups.get(key) || [];
+      group.push(item);
+      groups.set(key, group);
+    }
+    for (const group of groups.values()) {
+      if (group.length === 1 && detail !== "far") {
+        const [lat, lng] = avoidLabelBoxes(map, group[0].lat, group[0].lng, labelBoxes, 16);
+        addIcon(group[0], lat, lng);
+        continue;
+      }
+      if (group.length === 1) {
+        const item = group[0];
+        const style = styleFor(item.category);
+        const [lat, lng] = avoidLabelBoxes(map, item.lat, item.lng, labelBoxes, 10);
+        const icon = L.divIcon({
+          className: "map-dot",
+          html: "",
+          iconSize: [9, 9],
+          iconAnchor: [4, 4]
+        });
+        const marker = L.marker([lat, lng], { icon, pane: "pins", keyboard: false, bubblingMouseEvents: false });
+        marker.on("click", event => {
+          if (event.originalEvent) event.originalEvent.stopPropagation();
+          onSelect(item);
+        });
+        marker.on("add", () => {
+          const element = marker.getElement();
+          if (!element) return;
+          element.style.background = style.color;
+          const name = item.title || item.name || "Marker";
+          element.title = name;
+          element.setAttribute("aria-label", name);
+        });
+        layer.addLayer(marker);
+        continue;
+      }
+      const rawLat = group.reduce((sum, item) => sum + item.lat, 0) / group.length;
+      const rawLng = group.reduce((sum, item) => sum + item.lng, 0) / group.length;
+      const size = group.length > 12 ? 30 : 26;
+      const [lat, lng] = avoidLabelBoxes(map, rawLat, rawLng, labelBoxes, size / 2 + 4);
+      const counts = new Map();
+      for (const item of group) counts.set(item.category, (counts.get(item.category) || 0) + 1);
+      const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+      const style = styleFor(top);
+      const icon = L.divIcon({
+        className: "map-cluster",
+        html: String(group.length),
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2]
+      });
+      const marker = L.marker([lat, lng], { icon, pane: "pins", keyboard: false, bubblingMouseEvents: false });
+      marker.on("click", event => {
+        if (event.originalEvent) event.originalEvent.stopPropagation();
+        viewport._userMoved = true;
+        map.setView([lat, lng], Math.min(map.getMaxZoom(), map.getZoom() + 1.4), { animate: true });
+      });
+      marker.on("add", () => {
+        const element = marker.getElement();
+        if (!element) return;
+        element.style.background = style.color;
+        element.style.color = style.ink;
+        element.title = `${group.length} places`;
+        element.setAttribute("aria-label", element.title);
+      });
+      layer.addLayer(marker);
+    }
+  } else {
+    for (const item of items) addIcon(item, item.lat, item.lng);
+  }
+  layer.addTo(map);
+  map._pinLayer = layer;
+  nudgePinsOffLabels(map, viewport);
+}
+
+function nudgePinsOffLabels(map, viewport) {
+  if (viewport.dataset.detail === "close" || !map._pinLayer) return;
+  const origin = viewport.getBoundingClientRect();
+  const labelBoxes = () => [...viewport.querySelectorAll(".map-label")]
+    .filter(node => node.classList.contains("kind-state") || node.classList.contains("kind-county"))
+    .map(node => {
+      const rect = node.getBoundingClientRect();
+      return { left: rect.left - origin.left, top: rect.top - origin.top, right: rect.right - origin.left, bottom: rect.bottom - origin.top };
+    });
+  for (const marker of map._pinLayer.getLayers()) {
+    const element = marker.getElement();
+    if (!element) continue;
+    for (let pass = 0; pass < 6; pass += 1) {
+      const boxes = labelBoxes();
+      const rect = element.getBoundingClientRect();
+      const left = rect.left - origin.left;
+      const top = rect.top - origin.top;
+      const right = left + rect.width;
+      const bottom = top + rect.height;
+      const hit = boxes.find(box => left < box.right - 1 && right > box.left + 1 && top < box.bottom - 1 && bottom > box.top + 1);
+      if (!hit) break;
+      const cx = (left + right) / 2;
+      const cy = (top + bottom) / 2;
+      const anchor = map.latLngToContainerPoint(marker.getLatLng());
+      const spots = [
+        { x: cx, y: hit.top - rect.height / 2 - 5 },
+        { x: cx, y: hit.bottom + rect.height / 2 + 5 },
+        { x: hit.left - rect.width / 2 - 5, y: cy },
+        { x: hit.right + rect.width / 2 + 5, y: cy }
+      ];
+      spots.sort((a, b) => (a.x - cx) ** 2 + (a.y - cy) ** 2 - ((b.x - cx) ** 2 + (b.y - cy) ** 2));
+      marker.setLatLng(map.containerPointToLatLng([spots[0].x + (anchor.x - cx), spots[0].y + (anchor.y - cy)]));
+    }
+  }
+}
+
+function mountLeafletMap(viewport, paneId) {
+  if (!viewport || viewport.dataset.zoomReady || typeof L === "undefined" || !MAP_FRAME) return;
+  viewport.dataset.zoomReady = "1";
+  viewport.dataset.scale = "1";
+  viewport.dataset.detail = "far";
+  const map = L.map(viewport, {
+    crs: L.CRS.Simple,
+    minZoom: -2,
+    maxZoom: 7,
+    zoomSnap: 0,
+    zoomDelta: 0.5,
+    inertia: true,
+    inertiaDeceleration: 2800,
+    zoomControl: false,
+    attributionControl: false,
+    doubleClickZoom: true,
+    touchZoom: true,
+    scrollWheelZoom: true,
+    boxZoom: false,
+    keyboard: false,
+    maxBounds: MAP_FRAME,
+    maxBoundsViscosity: 1
+  });
+  viewport.frontierMap = map;
+  const pane = map.createPane("pins");
+  pane.id = paneId;
+  pane.style.zIndex = "650";
+  const layers = ["far", "mid", "close"].map(name => L.imageOverlay(`content/parchment-${name}.jpg`, MAP_FRAME));
+  viewport._parchment = layers;
+  viewport._drawPins = () => drawPins(viewport);
+  if (ACCURACY_MAP) {
+    L.tileLayer("https://s.rsg.sc/sc/images/games/RDR2/map/game/{z}/{x}/{y}.jpg", {
+      bounds: MAP_FRAME,
+      minZoom: 2,
+      maxZoom: 7,
+      noWrap: true
+    }).addTo(map);
+  } else {
+    layers.forEach(layer => layer.addTo(map));
+  }
+  let fitting = false;
+  const applyDetail = () => {
+    const fit = Number.isFinite(viewport._fitZoom) ? viewport._fitZoom : map.getZoom();
+    const ratio = Math.pow(2, map.getZoom() - fit);
+    const detail = !Number.isFinite(ratio) || ratio < 1.8 ? "far" : ratio < 3.6 ? "mid" : "close";
+    const changed = viewport.dataset.detail !== detail;
+    viewport.dataset.scale = ratio.toFixed(3);
+    viewport.dataset.detail = detail;
+    if (!ACCURACY_MAP && !viewport._accuracyOn) {
+      layers[0].setOpacity(detail === "far" ? 1 : 0);
+      layers[1].setOpacity(detail === "mid" ? 1 : 0);
+      layers[2].setOpacity(detail === "close" ? 1 : 0);
+    }
+    if (changed) viewport._drawPins?.();
+  };
+  const fitHome = () => {
+    const box = viewport.getBoundingClientRect();
+    if (box.width < 20 || box.height < 20) return false;
+    fitting = true;
+    map.setMinZoom(-2);
+    map.invalidateSize({ animate: false });
+    const home = viewport._landBounds?.isValid?.() ? viewport._landBounds : MAP_FRAME;
+    const size = map.getSize();
+    const southWest = map.project(home.getSouthWest(), 0);
+    const northEast = map.project(home.getNorthEast(), 0);
+    const boundsWidth = Math.abs(northEast.x - southWest.x) || 1;
+    const boundsHeight = Math.abs(northEast.y - southWest.y) || 1;
+    const widthZoom = Math.log2(size.x / boundsWidth);
+    const heightZoom = Math.log2(size.y / boundsHeight);
+    // Fill the screen. A width-only fit on a tall phone is the short strip
+    // with the horizontal seams. maxBounds keeps the pan inside the land,
+    // east-west in portrait and north-south when the window is wide.
+    const zoom = Math.max(widthZoom, heightZoom);
+    const padded = home.pad(0.04);
+    const limit = L.latLngBounds(
+      [Math.max(MAP_FRAME.getSouth(), padded.getSouth()), Math.max(MAP_FRAME.getWest(), padded.getWest())],
+      [Math.min(MAP_FRAME.getNorth(), padded.getNorth()), Math.min(MAP_FRAME.getEast(), padded.getEast())]
+    );
+    map.setMaxBounds(limit.isValid() ? limit : home);
+    map.setView(home.getCenter(), zoom, { animate: false });
+    viewport._fitZoom = zoom;
+    viewport._widthZoom = widthZoom;
+    map.setMinZoom(zoom);
+    map.panInsideBounds(limit.isValid() ? limit : home, { animate: false });
+    viewport._userMoved = false;
+    fitting = false;
+    applyDetail();
+    viewport._drawPins?.();
+    return true;
+  };
+  viewport.frontierReflow = () => {
+    if (viewport._userMoved) {
+      map.invalidateSize({ animate: false });
+      applyDetail();
       return;
     }
-    if (drag && scale > 1) {
-      x = drag.ox + event.clientX - drag.x;
-      y = drag.oy + event.clientY - drag.y;
-      apply();
-    }
-  });
-  const endPointer = event => {
-    pointers.delete(event.pointerId);
-    if (pointers.size < 2) pinch = null;
-    if (!pointers.size) drag = null;
+    fitHome();
   };
-  viewport.addEventListener("pointerup", endPointer);
-  viewport.addEventListener("pointercancel", endPointer);
-  viewport.addEventListener("wheel", event => {
+  viewport.frontierZoomTo = (nextScale, xPercent, yPercent) => {
+    if (!Number.isFinite(viewport._fitZoom) && !fitHome()) return;
+    const ratio = Math.max(0.2, Number(nextScale) || 1);
+    const fit = viewport._fitZoom;
+    const zoom = Math.min(map.getMaxZoom(), Math.max(map.getMinZoom(), fit + Math.log2(ratio)));
+    const lat = Number.isFinite(Number(yPercent)) ? -144 * (Number(yPercent) / 100) : -72;
+    const lng = Number.isFinite(Number(xPercent)) ? 176 * (Number(xPercent) / 100) : 88;
+    viewport._userMoved = ratio > 1.05;
+    map.setView([lat, lng], zoom, { animate: false });
+    applyDetail();
+  };
+  map.on("zoom move", () => {
+    if (!fitting) viewport._userMoved = true;
+    applyDetail();
+    layoutMapLabels(viewport);
+  });
+  map.on("moveend", () => {
+    if (!fitting && viewport.dataset.detail !== "close") viewport._drawPins?.();
+  });
+  map.on("click", () => {
+    const card = viewport.closest(".map-panel")?.querySelector(".map-detail");
+    if (card?.classList.contains("is-open")) card._closeSheet?.();
+  });
+  const frame = viewport.closest(".map-frame");
+  frame?.querySelector(".map-zoom-in")?.addEventListener("click", () => map.zoomIn(0.5));
+  frame?.querySelector(".map-zoom-out")?.addEventListener("click", () => map.zoomOut(0.5));
+  frame?.querySelector(".map-recenter")?.addEventListener("click", () => {
+    viewport._userMoved = false;
+    fitHome();
+  });
+  const searchToggle = frame?.querySelector(".map-search-toggle");
+  const searchPop = frame?.querySelector(".map-search-pop");
+  const search = frame?.querySelector(".map-search-input");
+  searchToggle?.addEventListener("click", () => {
+    const open = Boolean(searchPop?.hidden);
+    if (searchPop) searchPop.hidden = !open;
+    searchToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) search?.focus();
+  });
+  const layersButton = frame?.querySelector(".map-layers-toggle");
+  const sheet = frame?.querySelector(".map-sheet");
+  layersButton?.addEventListener("click", () => {
+    const open = Boolean(sheet?.hidden);
+    if (sheet) sheet.hidden = !open;
+    layersButton.setAttribute("aria-expanded", open ? "true" : "false");
+    const card = viewport.closest(".map-panel")?.querySelector(".map-detail");
+    if (open && card?.classList.contains("is-open")) card._closeSheet?.();
+  });
+  const fly = () => {
+    const query = search.value.trim().toLowerCase();
+    if (!query) return;
+    const hidden = viewport.id === "hiddenMap";
+    const pool = hidden ? state.hiddenPlaces.filter(modeMatches) : state.mapLocations.filter(modeMatches);
+    const labelOf = item => `${item.title || ""} ${item.name || ""}`.toLowerCase();
+    const item = pool.find(entry => labelOf(entry) === query)
+      || pool.find(entry => labelOf(entry).startsWith(query))
+      || pool.find(entry => `${labelOf(entry)} ${entry.breed || ""} ${entry.coat || ""} ${entry.region || ""}`.includes(query));
+    const gaz = (state.gazetteer || []).find(entry => entry.name.toLowerCase() === query)
+      || (state.gazetteer || []).find(entry => entry.name.toLowerCase().startsWith(query))
+      || (state.gazetteer || []).find(entry => entry.name.toLowerCase().includes(query));
+    if (!item && !gaz) {
+      search.setCustomValidity("No matching place");
+      search.reportValidity();
+      return;
+    }
+    search.setCustomValidity("");
+    if (item && hidden) showHiddenDetail(item);
+    else if (item) {
+      if (!mapCategoryOn(item.category)) {
+        state.disabledMapCategories.delete(item.category);
+        renderMapTags();
+      }
+      showMapDetail(item);
+    }
+    const lat = Number.isFinite(item?.lat) ? item.lat : gaz?.lat;
+    const lng = Number.isFinite(item?.lng) ? item.lng : gaz?.lng;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const zoom = Math.min(map.getMaxZoom(), (viewport._fitZoom || 1) + Math.log2(4.2));
+    viewport._userMoved = true;
+    map.setView([lat, lng], zoom, { animate: true });
+  };
+  search?.addEventListener("keydown", event => {
+    if (event.key !== "Enter") return;
     event.preventDefault();
-    scale = Math.min(4, Math.max(1, event.deltaY > 0 ? scale / 1.12 : scale * 1.12));
-    if (scale === 1) { x = 0; y = 0; }
-    apply();
-  }, { passive: false });
+    fly();
+  });
+  searchPop?.addEventListener("submit", event => {
+    event.preventDefault();
+    fly();
+  });
+  window.addEventListener("resize", () => viewport.frontierReflow());
+  let bootTries = 0;
+  const bootFit = () => {
+    if (fitHome() || bootTries++ > 12) return;
+    requestAnimationFrame(bootFit);
+  };
+  requestAnimationFrame(bootFit);
 }
+
+window.frontierShowAccuracy = on => {
+  try { localStorage.setItem("fg_accuracy", on ? "1" : "0"); } catch { /* tiles can still be added for this visit */ }
+  for (const id of ["fieldMap", "hiddenMap"]) {
+    const viewport = document.getElementById(id);
+    const map = viewport?.frontierMap;
+    if (!map || !MAP_FRAME) continue;
+    viewport._accuracyOn = Boolean(on);
+    if (on && !viewport._accuracyLayer) {
+      viewport._accuracyLayer = L.tileLayer("https://s.rsg.sc/sc/images/games/RDR2/map/game/{z}/{x}/{y}.jpg", {
+        bounds: MAP_FRAME,
+        minZoom: 2,
+        maxZoom: 7,
+        noWrap: true
+      }).addTo(map);
+    }
+    if (viewport._accuracyLayer) viewport._accuracyLayer.setOpacity(on ? 1 : 0);
+    viewport._parchment?.forEach(layer => layer.setOpacity(on ? 0 : 1));
+    if (!on) viewport._drawPins?.();
+  }
+};
 
 function setCoachState(stateName, detail) {
   coach.state = stateName;
@@ -2213,6 +3064,12 @@ function canvasFromDataUrl(dataUrl) {
 async function currentCoachCanvas() {
   const profile = coach.profile || saveCoachProfile();
   const quality = profile.quality === "sharp" ? 0.86 : 0.72;
+  if (coach.source === "link") {
+    const src = await pullLinkFrame();
+    if (!src.startsWith("data:image")) return null;
+    const canvas = cropCanvas(await canvasFromDataUrl(src), profile.crop);
+    return { canvas, dataUrl: canvas.toDataURL("image/jpeg", quality) };
+  }
   if (coach.source === "camera") {
     const video = $("#coachVideo");
     if (!video || !video.videoWidth) return null;
@@ -2361,7 +3218,7 @@ async function analyzeCoachFrame(session, force = false) {
 async function startCoach() {
   haltCoach("");
   const profile = saveCoachProfile();
-  coach.source = profile.source === "screen" ? "screen" : "camera";
+  coach.source = profile.source === "screen" ? "screen" : profile.source === "link" ? "link" : "camera";
   coach.muted = $("#coachMute")?.dataset.muted === "1";
   coach.paused = false;
   coach.ownsScreen = false;
@@ -2370,7 +3227,13 @@ async function startCoach() {
   const session = coach.session;
   setCoachState("waiting", "Waiting for a readable game frame. A server health check does not mean the game is connected.");
   try {
-    if (coach.source === "camera") {
+    if (coach.source === "link") {
+      if (!localStorage.getItem("fg_link_token")) {
+        haltCoach("Pair Frontier Link in Settings first. The helper captures the Red Dead window only while its switch is on.");
+        return;
+      }
+      setCoachState("waiting", "Waiting for a frame from Frontier Link. The phone camera stays off.");
+    } else if (coach.source === "camera") {
       const video = $("#coachVideo");
       if (video) video.classList.remove("hidden");
       const opened = await openOwnedCamera("coach", video);
@@ -2450,8 +3313,18 @@ if ("serviceWorker" in navigator && window.location.hostname !== "appassets.andr
 
 $("#onlineDot").onclick = () => checkStatus(true);
 restoreCoachProfile();
-mountSchematicMap($("#fieldMap"));
-mountSchematicMap($("#hiddenMap"));
+mountLeafletMap($("#fieldMap"), "mapMarkers");
+mountLeafletMap($("#hiddenMap"), "hiddenMarkers");
+fetch("content/land-bounds.json").then(response => response.ok ? response.json() : null).then(data => {
+  if (!data || !Number.isFinite(data.south) || !Number.isFinite(data.west) || !Number.isFinite(data.north) || !Number.isFinite(data.east)) return;
+  const bounds = L.latLngBounds([data.south, data.west], [data.north, data.east]);
+  for (const id of ["fieldMap", "hiddenMap"]) {
+    const node = document.getElementById(id);
+    if (!node) continue;
+    node._landBounds = bounds;
+    if (!node._userMoved) node.frontierReflow?.();
+  }
+}).catch(() => {});
 const coachStart = $("#coachStart");
 if (coachStart) coachStart.onclick = () => startCoach();
 const coachPause = $("#coachPause");
@@ -2497,5 +3370,297 @@ loadMap();
 loadFieldContent();
 checkStatus();
 showSavedUpdate();
+cachedProgress();
+renderSteamStatus();
 window.speechSynthesis?.getVoices?.();
 window.speechSynthesis?.addEventListener?.("voiceschanged", () => {});
+setInterval(pollLink, 8000);
+
+function steamId() {
+  return localStorage.getItem("fg_steam_id") || "";
+}
+
+function cachedProgress() {
+  const id = steamId();
+  if (!id) {
+    try { localStorage.removeItem("fg_steam_progress"); } catch { /* nothing saved */ }
+    return null;
+  }
+  try {
+    const data = JSON.parse(localStorage.getItem("fg_steam_progress") || "null");
+    if (!data || data.steamId !== id) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function formatUnlock(unix) {
+  if (!unix) return "Locked";
+  const date = new Date(Number(unix) * 1000);
+  if (Number.isNaN(date.getTime())) return "Unlocked";
+  return `Unlocked ${date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}`;
+}
+
+function renderSteamProgress(data, note = "") {
+  const summary = $("#progressSummary");
+  const list = $("#progressList");
+  if (!summary || !list) return;
+  summary.replaceChildren();
+  summary.classList.toggle("progress-empty", !data);
+  if (!data) {
+    const heading = document.createElement("h3");
+    heading.textContent = "Connect Steam";
+    const copy = document.createElement("p");
+    copy.textContent = note || "Sign in from Settings to load Red Dead Redemption 2 achievements and hours. Nothing is shown here until a Steam account is linked.";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "send";
+    button.textContent = "Connect Steam";
+    button.addEventListener("click", () => setView("settings"));
+    summary.append(heading, copy, button);
+  } else {
+    const heading = document.createElement("p");
+    const hours = Number.isFinite(Number(data.hoursPlayed)) ? `${data.hoursPlayed} hours` : "Hours not shared";
+    const percent = Number.isFinite(Number(data.percent)) ? `${data.percent}%` : "0%";
+    heading.textContent = `${hours} · ${data.unlocked || 0} of ${data.total || 0} achievements · ${percent}`;
+    summary.appendChild(heading);
+    if (data.fetchedAt) {
+      const when = document.createElement("p");
+      when.className = "muted";
+      when.textContent = `Saved on this phone ${new Date(data.fetchedAt).toLocaleString()}. Pull down or tap Refresh to sync.`;
+      summary.appendChild(when);
+    }
+    if (note) {
+      const extra = document.createElement("p");
+      extra.className = "muted";
+      extra.textContent = note;
+      summary.appendChild(extra);
+    }
+  }
+  list.replaceChildren();
+  for (const item of data?.achievements || []) {
+    const card = document.createElement("article");
+    card.className = `card progress-row${item.unlocked ? "" : " is-locked"}`;
+    if (item.icon) {
+      const image = document.createElement("img");
+      image.alt = "";
+      image.src = item.icon;
+      card.appendChild(image);
+    }
+    const copy = document.createElement("div");
+    const title = document.createElement("h3");
+    title.textContent = item.name || "Achievement";
+    const description = document.createElement("p");
+    description.textContent = item.description || "";
+    const stateLine = document.createElement("p");
+    stateLine.className = "muted";
+    stateLine.textContent = item.unlocked ? formatUnlock(item.unlockTime) : "Locked";
+    copy.append(title, description, stateLine);
+    card.appendChild(copy);
+    list.appendChild(card);
+  }
+}
+window.renderSteamProgress = renderSteamProgress;
+
+function renderSteamStatus() {
+  const node = $("#steamStatus");
+  if (!node) return;
+  const id = steamId();
+  node.textContent = id
+    ? `Connected as SteamID64 ${id}. Game details must be public or achievements stay hidden.`
+    : "Steam is not connected. After you connect, game details must be public.";
+  const link = $("#linkStatus");
+  if (link && localStorage.getItem("fg_link_token") && link.textContent === "Not paired.") {
+    link.textContent = "A pairing code is saved on this phone. Show it again if the PC still needs it.";
+  }
+}
+
+async function syncSteamProgress() {
+  const id = steamId();
+  if (!id) {
+    try { localStorage.removeItem("fg_steam_progress"); } catch { /* nothing saved */ }
+    renderSteamProgress(null);
+    return;
+  }
+  const cached = cachedProgress();
+  if (cached) renderSteamProgress(cached);
+  else renderSteamProgress(null, "Steam is linked. Achievements appear after a real sync.");
+  if (!settings.api || settings.serverMode === "offline") return;
+  try {
+    const data = await requestJson(`/api/steam/progress?steamId=${encodeURIComponent(id)}`, {
+      cache: "no-store",
+      headers: serverHeaders()
+    });
+    data.steamId = id;
+    localStorage.setItem("fg_steam_progress", JSON.stringify(data));
+    renderSteamProgress(data);
+  } catch (error) {
+    const message = error.status === 404
+      ? "This server does not have Steam progress yet. No saved numbers are shown."
+      : (error.message || "Steam sync failed.");
+    if (error.status === 404) {
+      try { localStorage.removeItem("fg_steam_progress"); } catch { /* nothing saved */ }
+      renderSteamProgress(null, message);
+      return;
+    }
+    renderSteamProgress(cached, message);
+  }
+}
+
+async function pullLinkFrame() {
+  const token = localStorage.getItem("fg_link_token") || "";
+  if (!token || !settings.api || settings.serverMode === "offline") return "";
+  const data = await requestJson(`/api/link/frame?token=${encodeURIComponent(token)}`, {
+    cache: "no-store",
+    headers: serverHeaders()
+  });
+  const capturedAt = Date.parse(data?.capturedAt || "");
+  if (!String(data?.imageDataUrl || "").startsWith("data:image")) return "";
+  if (Number.isFinite(capturedAt) && Date.now() - capturedAt > 15000) return "";
+  const preview = $("#coachPreview");
+  if (preview) {
+    preview.src = data.imageDataUrl;
+    preview.classList.remove("hidden");
+  }
+  return data.imageDataUrl;
+}
+
+function applyLinkEvents(events) {
+  const ids = foundIds();
+  let changed = false;
+  const prompts = $("#progressPrompts");
+  for (const event of events || []) {
+    if (event.kind === "mark" && event.id && !ids.has(event.id)) {
+      ids.add(event.id);
+      changed = true;
+    }
+    if (event.kind !== "prompt" || !prompts) continue;
+    const card = document.createElement("article");
+    card.className = "card";
+    const title = document.createElement("h3");
+    title.textContent = event.label || "Seen in Red Dead";
+    card.appendChild(title);
+    const note = document.createElement("p");
+    note.textContent = event.promptKind === "challenge"
+      ? "Frontier Link saw a challenge complete. It was not marked, because that line is not a map pin."
+      : "Frontier Link saw this on screen. Mark the place you just found.";
+    card.appendChild(note);
+    for (const candidate of event.candidates || []) {
+      card.appendChild(actionButton("ghost compact", `Mark ${candidate.title}`, () => {
+        const next = foundIds();
+        next.add(candidate.id);
+        localStorage.setItem("fg_found", JSON.stringify([...next]));
+        renderMap();
+        renderHiddenMap();
+        card.remove();
+      }));
+    }
+    prompts.prepend(card);
+  }
+  if (changed) {
+    localStorage.setItem("fg_found", JSON.stringify([...ids]));
+    renderMap();
+    renderHiddenMap();
+  }
+}
+
+async function pollLink() {
+  const token = localStorage.getItem("fg_link_token") || "";
+  if (!token || !settings.api || settings.serverMode === "offline") return;
+  try {
+    const status = await requestJson(`/api/link/status?token=${encodeURIComponent(token)}`, {
+      cache: "no-store",
+      headers: serverHeaders()
+    });
+    const label = $("#linkStatus");
+    if (label && status.paired) label.textContent = "Frontier Link is paired. Capture stays off until you turn it on in the helper.";
+    const since = localStorage.getItem("fg_link_since") || "0";
+    const page = await requestJson(`/api/link/events?token=${encodeURIComponent(token)}&since=${encodeURIComponent(since)}`, {
+      cache: "no-store",
+      headers: serverHeaders()
+    });
+    localStorage.setItem("fg_link_since", String(page.next ?? since));
+    applyLinkEvents(page.events || []);
+  } catch { /* pairing can expire; the next code replaces it */ }
+}
+
+let progressPull = 0;
+$("#progressView")?.addEventListener("touchstart", event => {
+  progressPull = event.touches?.[0]?.clientY || 0;
+}, { passive: true });
+$("#progressView")?.addEventListener("touchend", event => {
+  const end = event.changedTouches?.[0]?.clientY || 0;
+  const scroller = document.querySelector("main") || document.scrollingElement;
+  if ((scroller?.scrollTop || 0) <= 2 && end - progressPull > 72) syncSteamProgress();
+});
+$("#refreshProgress")?.addEventListener("click", () => syncSteamProgress());
+
+$("#connectSteam")?.addEventListener("click", async () => {
+  const status = $("#steamStatus");
+  if (!settings.api || settings.serverMode === "offline") {
+    if (status) status.textContent = "Choose Auto or Custom and save the server before connecting Steam.";
+    return;
+  }
+  const nonce = (globalThis.crypto?.randomUUID?.() || `${Date.now()}${Math.random()}`).replace(/-/g, "").slice(0, 40).padEnd(16, "0");
+  const url = `${settings.api}/auth/steam?nonce=${encodeURIComponent(nonce)}`;
+  try {
+    if (window.AndroidBridge?.openExternal) window.AndroidBridge.openExternal(url);
+    else window.open(url, "_blank", "noopener");
+  } catch {
+    window.open(url, "_blank", "noopener");
+  }
+  if (status) status.textContent = "Waiting for Steam in the browser. Game details must be public.";
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    try {
+      const data = await requestJson(`/api/steam/session?nonce=${encodeURIComponent(nonce)}`, {
+        cache: "no-store",
+        headers: serverHeaders()
+      });
+      if (data.status === "connected" && data.steamId) {
+        localStorage.setItem("fg_steam_id", data.steamId);
+        renderSteamStatus();
+        syncSteamProgress();
+        return;
+      }
+    } catch { /* the browser tab may still be signing in */ }
+  }
+  if (status) status.textContent = "Steam did not finish. Try Connect Steam again.";
+});
+
+$("#disconnectSteam")?.addEventListener("click", () => {
+  localStorage.removeItem("fg_steam_id");
+  renderSteamStatus();
+});
+
+$("#startLinkPair")?.addEventListener("click", async () => {
+  const status = $("#linkStatus");
+  if (!settings.api || settings.serverMode === "offline") {
+    if (status) status.textContent = "Save the Frontier Guide server before pairing Frontier Link.";
+    return;
+  }
+  try {
+    const data = await requestJson("/api/link/pair", {
+      method: "POST",
+      headers: serverHeaders(true),
+      body: "{}"
+    });
+    localStorage.setItem("fg_link_token", data.token);
+    localStorage.setItem("fg_link_since", "0");
+    const code = $("#linkCode");
+    if (code) {
+      code.hidden = false;
+      code.textContent = data.code;
+    }
+    const payload = `frontier-link://pair?code=${data.code}&host=${encodeURIComponent(settings.api)}`;
+    const qr = $("#linkQr");
+    if (qr && data.qrSvg) {
+      qr.src = URL.createObjectURL(new Blob([data.qrSvg], { type: "image/svg+xml" }));
+      qr.hidden = false;
+    }
+    if (status) status.textContent = `Type ${data.code} into Frontier Link, or paste ${payload}. Capture on the PC stays off until you turn it on.`;
+  } catch (error) {
+    if (status) status.textContent = error.message || "Pairing did not start.";
+  }
+});

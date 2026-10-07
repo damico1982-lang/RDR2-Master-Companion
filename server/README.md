@@ -52,6 +52,9 @@ The health route must remain public because Render health probes cannot supply `
 - `RATE_LIMIT_MAX` — optional; defaults to `30` requests per window per client IP.
 - `RATE_LIMIT_WINDOW_MS` — optional; defaults to `60000`.
 - `PORT` — supplied by Render; local default is `3000`.
+- `STEAM_API_KEY` — optional. Leave it unset until you create a key at https://steamcommunity.com/dev/apikey and add it on Render. Without it, `GET /api/steam/progress` returns `503` and `code: steam_disabled`. The phone keeps the last progress it saved.
+
+Steam progress reads Red Dead Redemption 2 (app id `1174180`) with GetPlayerAchievements, GetSchemaForGame, and GetOwnedGames. The player's Steam profile **Game details** must be **Public**. A private profile returns `403` and `code: steam_private`. Connect Steam is OpenID and does not use this key.
 
 Never place `OPENAI_API_KEY` inside Android, client-side JavaScript, a committed `.env` file, or `render.yaml`.
 

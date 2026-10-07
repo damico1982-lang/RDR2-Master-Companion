@@ -2,15 +2,29 @@ import { timingSafeEqual } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import cors from "cors";
 import express from "express";
+import QRCode from "qrcode";
+import { readFileSync } from "node:fs";
 import { loadFieldNotes, relevantNotes } from "./field-notes.mjs";
 import { parseSseBuffer } from "./sse.mjs";
+import { matchSightings } from "./detect.mjs";
+import { createLinkHub } from "./link.mjs";
+import {
+  RDR2_APPID,
+  buildSteamLoginUrl,
+  createSteamSessions,
+  mergeAchievementProgress,
+  parsePlaytimeHours,
+  steamApiConfigured,
+  steamProfileIsPrivate,
+  verifySteamAssertion
+} from "./steam.mjs";
 
 const DEFAULT_MODEL = "gpt-6-luna";
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_TTS_MODEL = "gpt-4o-mini-tts";
 const DEFAULT_TTS_VOICE = "onyx";
 const DEFAULT_TTS_INSTRUCTIONS = "Speak as a deep, warm Black man in his thirties or forties. Low chest voice, unhurried, dry humor, direct. Sound like someone talking across a campfire, not an announcer, not a cartoon, and not a whisper.";
-const APP_VERSION = "1.5.0";
+const APP_VERSION = "1.7.2";
 const PUBLIC_DIR = fileURLToPath(new URL("./public/", import.meta.url));
 const PUBLIC_INDEX = fileURLToPath(new URL("./public/index.html", import.meta.url));
 
@@ -27,7 +41,7 @@ Treat "cheats" as built-in cheat codes, legitimate strategies, and secrets. Neve
 Never invent a mission, item, patch, event, location, payout, spawn cycle, clock time, or mechanic. Mention prerequisites, chapter or role requirements, platform/version differences, randomized spawns, and limited-time availability when they change the answer.
 For live or current questions, prefer official Rockstar sources for patches, events, and service changes. Clearly label community maps, spawn-cycle tools, bugs, and workarounds as third-party or unverified when applicable.
 Do not write in dialect and do not describe an accent. The spoken voice is handled separately.
-The schematic map in the app is not Rockstar's map. Give landmark directions, not a claim that a pin is a surveyed coordinate.`;
+The parchment map in the app is an original schematic, not Rockstar's map. Give landmark directions, not a claim that a pin is a surveyed coordinate.`;
 
 function positiveInteger(value, fallback) {
   const parsed = Number.parseInt(value, 10);
@@ -111,7 +125,30 @@ function extractSources(response) {
   return sources.slice(0, 8);
 }
 
-export function createApp({ env = process.env, fetchImpl = globalThis.fetch, logger = console, fieldNotes = null } = {}) {
+function loadPlaceIndex() {
+  try {
+    const map = JSON.parse(readFileSync(new URL("./public/content/map.json", import.meta.url), "utf8"));
+    const hidden = JSON.parse(readFileSync(new URL("./public/content/hidden-places.json", import.meta.url), "utf8"));
+    return [...map, ...hidden].map(item => ({
+      id: String(item.id || ""),
+      title: String(item.title || item.name || item.id || ""),
+      category: String(item.category || "")
+    })).filter(item => item.id);
+  } catch {
+    return [];
+  }
+}
+
+function steamPage(message) {
+  const safe = String(message).replace(/[&<>]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[char]));
+  return `<!doctype html><meta charset="utf-8"><title>Frontier Guide</title><body style="font-family:Georgia,serif;background:#1a1410;color:#f4ead8;padding:32px"><h1>Frontier Guide</h1><p>${safe}</p></body>`;
+}
+
+function publicOrigin(req) {
+  return `${req.protocol}://${req.get("host")}`;
+}
+
+export function createApp({ env = process.env, fetchImpl = globalThis.fetch, logger = console, fieldNotes = null, linkHub = null, steamSessions = null } = {}) {
   const apiKey = String(env.OPENAI_API_KEY || "").trim();
   const model = String(env.OPENAI_MODEL || DEFAULT_MODEL).trim();
   const ttsModel = String(env.OPENAI_TTS_MODEL || DEFAULT_TTS_MODEL).trim();
@@ -196,8 +233,177 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
         enabled: Boolean(apiKey),
         model: ttsModel,
         voice: ttsVoice
+      },
+      steam: {
+        configured: steamApiConfigured(env),
+        appId: RDR2_APPID
       }
     });
+  });
+
+  const steamKey = String(env.STEAM_API_KEY || "").trim();
+  const steamNonce = steamSessions || createSteamSessions();
+  const links = linkHub || createLinkHub();
+  const places = loadPlaceIndex();
+  let schemaCache = null;
+  let schemaCachedAt = 0;
+
+  async function steamJson(path, params) {
+    const url = new URL(`https://api.steampowered.com/${path}`);
+    url.searchParams.set("key", steamKey);
+    for (const [key, value] of Object.entries(params)) url.searchParams.set(key, String(value));
+    const response = await fetchImpl(url, { headers: { accept: "application/json" } });
+    const body = await response.json().catch(() => null);
+    return { status: response.status, body };
+  }
+
+  app.get("/auth/steam", (req, res) => {
+    const nonce = String(req.query.nonce || "");
+    if (!/^[a-zA-Z0-9_-]{16,80}$/.test(nonce)) return res.status(400).json({ error: "A connection nonce is required." });
+    steamNonce.begin(nonce);
+    const realm = publicOrigin(req);
+    const returnTo = `${realm}/auth/steam/callback?nonce=${encodeURIComponent(nonce)}`;
+    return res.redirect(buildSteamLoginUrl({ realm, returnTo }));
+  });
+
+  app.get("/auth/steam/callback", async (req, res) => {
+    const nonce = String(req.query.nonce || "");
+    try {
+      const steamId = await verifySteamAssertion(req.query, fetchImpl);
+      if (!steamId || !steamNonce.complete(nonce, steamId)) {
+        return res.status(401).type("html").send(steamPage("Steam did not confirm that sign-in. Start again from Settings in Frontier Guide."));
+      }
+      return res.type("html").send(steamPage(`Steam connected. Close this tab and return to Frontier Guide. SteamID64 ${steamId}. Your game details must be public for achievements and hours to sync.`));
+    } catch (error) {
+      logger.error(error);
+      return res.status(502).type("html").send(steamPage("Steam could not be reached. Try Connect Steam again."));
+    }
+  });
+
+  app.get("/api/steam/session", requireClientToken, (req, res) => {
+    const nonce = String(req.query.nonce || "");
+    return res.json(steamNonce.read(nonce));
+  });
+
+  app.get("/api/steam/progress", requireClientToken, async (req, res) => {
+    const steamId = String(req.query.steamId || "");
+    if (!/^\d{17}$/.test(steamId)) return res.status(400).json({ error: "A 17-digit SteamID64 is required." });
+    if (!steamKey) {
+      return res.status(503).json({
+        error: "Steam sync is off until STEAM_API_KEY is set on the server. Create one at https://steamcommunity.com/dev/apikey and add it on Render. Your Steam profile game details must be public.",
+        code: "steam_disabled",
+        appId: RDR2_APPID
+      });
+    }
+    try {
+      const player = await steamJson("ISteamUserStats/GetPlayerAchievements/v1/", { steamid: steamId, appid: RDR2_APPID });
+      if (steamProfileIsPrivate(player.status, player.body)) {
+        return res.status(403).json({
+          error: "Steam profile game details must be public. In Steam, open your profile, Edit Profile, Privacy Settings, and set Game details to Public.",
+          code: "steam_private",
+          appId: RDR2_APPID
+        });
+      }
+      const freshSchema = !schemaCache || Date.now() - schemaCachedAt > 12 * 60 * 60 * 1000;
+      const schema = freshSchema
+        ? await steamJson("ISteamUserStats/GetSchemaForGame/v2/", { appid: RDR2_APPID, l: "english" })
+        : { status: 200, body: schemaCache };
+      if (freshSchema && schema.body?.game) {
+        schemaCache = schema.body;
+        schemaCachedAt = Date.now();
+      }
+      const owned = await steamJson("IPlayerService/GetOwnedGames/v1/", {
+        steamid: steamId,
+        include_appinfo: 0,
+        include_played_free_games: 1,
+        "appids_filter[0]": RDR2_APPID
+      });
+      const progress = mergeAchievementProgress(player.body, schema.body);
+      return res.json({
+        steamId,
+        ...progress,
+        hoursPlayed: parsePlaytimeHours(owned.body),
+        fetchedAt: new Date().toISOString(),
+        privacy: "Game details on the Steam profile must stay public for this sync."
+      });
+    } catch (error) {
+      logger.error(error);
+      return res.status(502).json({ error: "Steam could not be reached.", code: "steam_unavailable" });
+    }
+  });
+
+  app.post("/api/link/pair", rateLimit, requireClientToken, async (req, res) => {
+    try {
+      const pair = links.createPair();
+      const payload = `frontier-link://pair?code=${pair.code}&host=${encodeURIComponent(publicOrigin(req))}`;
+      const qrSvg = await QRCode.toString(payload, { type: "svg", margin: 1, width: 180, errorCorrectionLevel: "M" });
+      return res.json({ ...pair, qrSvg });
+    } catch (error) {
+      return res.status(error.status || 500).json({ error: error.message || "Could not start pairing." });
+    }
+  });
+
+  app.post("/api/link/claim", rateLimit, (req, res) => {
+    const code = String(req.body?.code || "");
+    if (!/^\d{6}$/.test(code)) return res.status(400).json({ error: "Enter the 6-digit code from Frontier Guide." });
+    const claimed = links.claim(code);
+    if (!claimed) return res.status(404).json({ error: "That pairing code is expired or already used." });
+    return res.json(claimed);
+  });
+
+  function linkToken(req) {
+    const header = String(req.get("authorization") || "");
+    if (header.toLowerCase().startsWith("bearer ")) return header.slice(7).trim();
+    return String(req.get("x-frontier-link") || req.body?.token || req.query?.token || "");
+  }
+
+  app.get("/api/link/status", requireClientToken, (req, res) => {
+    const status = links.status(linkToken(req));
+    if (!status) return res.status(404).json({ error: "Pairing session not found." });
+    return res.json(status);
+  });
+
+  app.post("/api/link/frame", rateLimit, (req, res) => {
+    const imageDataUrl = req.body?.imageDataUrl || "";
+    if (!validImageDataUrl(imageDataUrl) || !imageDataUrl) return res.status(400).json({ error: "A gameplay frame is required." });
+    const saved = links.saveFrame(linkToken(req), imageDataUrl, req.body?.capturedAt);
+    if (!saved) return res.status(401).json({ error: "Frontier Link is not paired." });
+    return res.json({ ok: true });
+  });
+
+  app.get("/api/link/frame", requireClientToken, (req, res) => {
+    const frame = links.frame(linkToken(req));
+    if (!frame) return res.json({ imageDataUrl: "", capturedAt: null });
+    return res.json(frame);
+  });
+
+  app.post("/api/link/sightings", rateLimit, (req, res) => {
+    const known = new Set(places.map(place => place.id));
+    const rawMarks = Array.isArray(req.body?.marks) ? req.body.marks : [];
+    const rawPrompts = Array.isArray(req.body?.prompts) ? req.body.prompts : [];
+    const fromText = req.body?.text ? matchSightings(req.body.text, places) : { marks: [], prompts: [] };
+    const marks = [...rawMarks, ...fromText.marks]
+      .map(item => ({ kind: "mark", id: String(item?.id || ""), title: String(item?.title || "") }))
+      .filter(item => known.has(item.id))
+      .slice(0, 12);
+    const prompts = [...rawPrompts, ...fromText.prompts].slice(0, 6).map(item => ({
+      kind: "prompt",
+      promptKind: String(item?.kind || item?.promptKind || "note").slice(0, 40),
+      label: String(item?.label || "Seen on screen").slice(0, 80),
+      candidates: Array.isArray(item?.candidates) ? item.candidates.filter(candidate => known.has(String(candidate?.id || candidate))).map(candidate => ({
+        id: String(candidate.id || candidate),
+        title: String(candidate.title || "")
+      })).slice(0, 8) : []
+    }));
+    const accepted = links.addSightings(linkToken(req), [...marks, ...prompts]);
+    if (!accepted) return res.status(401).json({ error: "Frontier Link is not paired." });
+    return res.json({ ok: true, accepted: accepted.length });
+  });
+
+  app.get("/api/link/events", requireClientToken, (req, res) => {
+    const page = links.events(linkToken(req), req.query.since);
+    if (!page) return res.status(404).json({ error: "Pairing session not found." });
+    return res.json(page);
   });
 
   const hits = new Map();
@@ -495,7 +701,7 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
       name: "Frontier Guide API",
       ok: true,
       version: APP_VERSION,
-      endpoints: ["/api/health", "/api/ask", "/api/speak", "/api/coach", "/api/live-update"]
+      endpoints: ["/api/health", "/api/ask", "/api/speak", "/api/coach", "/api/live-update", "/api/steam/progress", "/api/link/pair"]
     });
   });
 

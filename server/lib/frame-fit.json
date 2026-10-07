@@ -1,0 +1,98 @@
+{
+  "latCoeff": [
+    0.7307205190025627,
+    0.003987472877037903,
+    -1.9125853937541522
+  ],
+  "lngCoeff": [
+    -0.002762603093617152,
+    0.7399139626372839,
+    1.4302966875486927
+  ],
+  "pairs": [
+    {
+      "name": "bear",
+      "error": 0.884
+    },
+    {
+      "name": "beaver",
+      "error": 0.4475
+    },
+    {
+      "name": "boar",
+      "error": 0.4134
+    },
+    {
+      "name": "buck",
+      "error": 0.7961
+    },
+    {
+      "name": "cougar",
+      "error": 0.8481
+    },
+    {
+      "name": "coyote",
+      "error": 2.118
+    },
+    {
+      "name": "elk",
+      "error": 3.2328
+    },
+    {
+      "name": "fox",
+      "error": 0.6958
+    },
+    {
+      "name": "moose",
+      "error": 2.1597
+    },
+    {
+      "name": "panther",
+      "error": 0.8723
+    },
+    {
+      "name": "pronghorn",
+      "error": 2.1212
+    },
+    {
+      "name": "ram",
+      "error": 4.0392
+    },
+    {
+      "name": "tatanka",
+      "error": 1.4328
+    },
+    {
+      "name": "bison",
+      "error": 1.4943
+    },
+    {
+      "name": "wolf",
+      "error": 1.6361
+    },
+    {
+      "name": "statues",
+      "error": 0.6098
+    },
+    {
+      "name": "gator",
+      "error": 0.2248
+    }
+  ],
+  "shotgunVersusShack": 1.1764,
+  "whiteVersusIsabella": 2.2445,
+  "gtabossRms": 0.7118,
+  "gtabossTrain": {
+    "sourceLat": 73.45,
+    "sourceLng": 31.5,
+    "lat": -37.2391,
+    "lng": 112.6067
+  },
+  "dropped": [
+    "Granite Pass train wreck: no exact point in RDOMap or the community marker file. Pinned as approximate from the GTA Boss derailed-train marker after a web-mercator frame conversion.",
+    "Red Chestnut Arabian, Warped Brindle Arabian, Perlino Andalusian, wild Nokota at Little Creek, Few Spotted Appaloosa, wild Hungarian Half-bred, Tennessee Walker herd, Amber Champagne Missouri Fox Trotter, Black Arabian night encounter: no exact point in the source files. The Nokota spawn table's nearest point is 37 map units from the Little Creek landmark, so it was not used.",
+    "Calloway's Revolver, Flaco's Revolver, Midnight's Pistol, Otis Miller's revolver, Algernon's Revolver, Wicked Broken Knife, Hamish Lancaster: no exact free-roam point in the source files.",
+    "Strawberry gunsmith: the RDOMap shop file has no Strawberry gunsmith.",
+    "Northern pike in the legendary-fish table was not added. It is not one of the story legendary fish."
+  ]
+}
