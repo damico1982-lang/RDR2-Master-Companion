@@ -2016,25 +2016,19 @@ function spreadPins(items, scale = 1) {
   });
 }
 
-function groupPins(items, scale) {
-  if (scale >= 3.2) {
-    return spreadPins(items, scale).map(pin => ({
-      item: pin.item,
-      items: [pin.item],
-      x: pin.x,
-      y: pin.y,
-      cluster: false
-    }));
-  }
-  const far = scale < 1.8;
-  const threshold = far ? 7 : 4.5;
+function groupPins(items, scale, mapW, mapH) {
+  const width = Math.max(1, mapW * scale);
+  const height = Math.max(1, mapH * scale);
+  const limit = 32;
   const groups = [];
   for (const item of items) {
     const x = Number(item.x);
     const y = Number(item.y);
     let match = null;
     for (const group of groups) {
-      if (Math.hypot(group.x - x, group.y - y) < threshold) {
+      const dx = (group.x - x) / 100 * width;
+      const dy = (group.y - y) / 100 * height;
+      if (Math.hypot(dx, dy) < limit) {
         match = group;
         break;
       }
@@ -2056,7 +2050,7 @@ function groupPins(items, scale) {
     }
   }
   for (const group of groups) {
-    group.cluster = far || group.items.length > 1;
+    group.cluster = group.items.length > 1;
     if (group.cluster) group.item = null;
   }
   return groups;
@@ -2066,10 +2060,13 @@ function paintMarkers(layer, items, activeId, onSelect) {
   if (!layer) return;
   const viewport = layer.closest(".field-map");
   const scale = mapViewportScale(viewport);
+  const stage = viewport?.querySelector(".map-stage");
+  const mapW = stage?.clientWidth || viewport?.clientWidth || 1;
+  const mapH = stage?.clientHeight || viewport?.clientHeight || 1;
   const found = foundIds();
   layer.replaceChildren();
   let number = 0;
-  for (const group of groupPins(items, scale)) {
+  for (const group of groupPins(items, scale, mapW, mapH)) {
     const marker = document.createElement("button");
     marker.type = "button";
     marker.style.left = `${group.x}%`;
@@ -2099,6 +2096,7 @@ function paintMarkers(layer, items, activeId, onSelect) {
         onSelect(item);
       };
     }
+    marker.style.transform = `translate(-50%, -50%) scale(${1 / scale})`;
     marker.appendChild(label);
     layer.appendChild(marker);
   }
@@ -2170,66 +2168,97 @@ function mountSchematicMap(viewport, onZoom) {
   let pinch = null;
   let drawnBucket = -1;
   let drawnDetail = "";
+  let drawnSize = "";
+  let fitted = false;
   const pointers = new Map();
   const maxScale = 6.2;
-  const clampPan = () => {
+  const sheetAspect = 3888 / 2944;
+  const metrics = () => {
     const cw = viewport.clientWidth || 1;
     const ch = viewport.clientHeight || 1;
-    if (scale <= 1) {
-      x = 0;
-      y = 0;
+    const expanded = Boolean(viewport.closest(".map-frame")?.classList.contains("is-expanded"));
+    if (!expanded) return { cw, ch, mw: cw, mh: ch, expanded };
+    return { cw, ch, mw: ch * sheetAspect, mh: ch, expanded };
+  };
+  const layoutStage = () => {
+    const { mw, mh, expanded } = metrics();
+    if (!expanded) {
+      stage.style.inset = "";
+      stage.style.left = "";
+      stage.style.top = "";
+      stage.style.width = "";
+      stage.style.height = "";
       return;
     }
-    x = Math.min(0, Math.max(cw * (1 - scale), x));
-    y = Math.min(0, Math.max(ch * (1 - scale), y));
+    stage.style.inset = "auto";
+    stage.style.left = "0px";
+    stage.style.top = "0px";
+    stage.style.width = `${mw}px`;
+    stage.style.height = `${mh}px`;
+  };
+  const clampPan = () => {
+    const { cw, ch, mw, mh } = metrics();
+    const viewW = mw * scale;
+    const viewH = mh * scale;
+    if (viewW <= cw) x = (cw - viewW) / 2;
+    else x = Math.min(0, Math.max(cw - viewW, x));
+    if (viewH <= ch) y = (ch - viewH) / 2;
+    else y = Math.min(0, Math.max(ch - viewH, y));
   };
   const apply = () => {
+    layoutStage();
+    if (!fitted && scale === 1 && metrics().cw > 20) {
+      const { cw, mw } = metrics();
+      x = (cw - mw) / 2;
+      y = 0;
+      fitted = true;
+    }
     clampPan();
     stage.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+    stage.querySelectorAll(".map-marker").forEach(marker => {
+      marker.style.transform = `translate(-50%, -50%) scale(${1 / scale})`;
+    });
     const detail = scale < 1.8 ? "far" : scale < 3.6 ? "mid" : "close";
     viewport.dataset.scale = scale.toFixed(3);
     viewport.dataset.detail = detail;
     const bucket = Math.round(scale * 5);
-    if (bucket !== drawnBucket || detail !== drawnDetail) {
+    const sizeKey = `${Math.round(metrics().mw)}x${Math.round(metrics().mh)}`;
+    if (bucket !== drawnBucket || detail !== drawnDetail || sizeKey !== drawnSize) {
       drawnBucket = bucket;
       drawnDetail = detail;
+      drawnSize = sizeKey;
       if (typeof onZoom === "function") onZoom();
     }
   };
   const zoomToward = (nextScale, px, py) => {
-    const cw = viewport.clientWidth || 1;
-    const ch = viewport.clientHeight || 1;
+    const { cw, ch } = metrics();
     const focusX = Number.isFinite(px) ? px : cw / 2;
     const focusY = Number.isFinite(py) ? py : ch / 2;
     const worldX = (focusX - x) / scale;
     const worldY = (focusY - y) / scale;
     scale = Math.min(maxScale, Math.max(1, nextScale));
-    if (scale === 1) {
-      x = 0;
-      y = 0;
-    } else {
-      x = focusX - worldX * scale;
-      y = focusY - worldY * scale;
-    }
+    x = focusX - worldX * scale;
+    y = focusY - worldY * scale;
+    apply();
+  };
+  const centerSheet = () => {
+    const { cw, mw } = metrics();
+    scale = 1;
+    x = (cw - mw) / 2;
+    y = 0;
     apply();
   };
   viewport.frontierReflow = () => apply();
   viewport.frontierZoomTo = (nextScale, xPercent, yPercent) => {
-    const cw = viewport.clientWidth || 1;
-    const ch = viewport.clientHeight || 1;
+    const { cw, ch, mw, mh } = metrics();
     const target = Math.min(maxScale, Math.max(1, Number(nextScale) || 1));
     if (!Number.isFinite(Number(xPercent)) || !Number.isFinite(Number(yPercent))) {
       zoomToward(target, cw / 2, ch / 2);
       return;
     }
     scale = target;
-    if (scale === 1) {
-      x = 0;
-      y = 0;
-    } else {
-      x = cw / 2 - (Number(xPercent) / 100) * cw * scale;
-      y = ch / 2 - (Number(yPercent) / 100) * ch * scale;
-    }
+    x = cw / 2 - (Number(xPercent) / 100) * mw * scale;
+    y = ch / 2 - (Number(yPercent) / 100) * mh * scale;
     apply();
   };
   const tools = document.createElement("div");
@@ -2237,7 +2266,7 @@ function mountSchematicMap(viewport, onZoom) {
   tools.append(
     actionButton("ghost compact", "Zoom in", () => zoomToward(scale * 1.25, viewport.clientWidth / 2, viewport.clientHeight / 2)),
     actionButton("ghost compact", "Zoom out", () => zoomToward(scale / 1.25, viewport.clientWidth / 2, viewport.clientHeight / 2)),
-    actionButton("ghost compact", "Reset map", () => { scale = 1; x = 0; y = 0; apply(); })
+    actionButton("ghost compact", "Reset map", () => centerSheet())
   );
   viewport.parentElement?.insertBefore(tools, viewport);
   const frame = viewport.closest(".map-frame");
@@ -2258,6 +2287,8 @@ function mountSchematicMap(viewport, onZoom) {
       const open = frame.classList.toggle("is-expanded");
       expandButton.textContent = open ? "Close" : "Expand";
       expandButton.setAttribute("aria-pressed", open ? "true" : "false");
+      fitted = false;
+      scale = 1;
       viewport.frontierReflow?.();
     });
   }
@@ -2288,15 +2319,12 @@ function mountSchematicMap(viewport, onZoom) {
       const px = (points[0].x + points[1].x) / 2 - rect.left;
       const py = (points[0].y + points[1].y) / 2 - rect.top;
       scale = Math.min(maxScale, Math.max(1, pinch.scale * (distance() / pinch.dist)));
-      if (scale === 1) { x = 0; y = 0; }
-      else {
-        x = px - pinch.wx * scale;
-        y = py - pinch.wy * scale;
-      }
+      x = px - pinch.wx * scale;
+      y = py - pinch.wy * scale;
       apply();
       return;
     }
-    if (drag && scale > 1) {
+    if (drag) {
       x = drag.ox + event.clientX - drag.x;
       y = drag.oy + event.clientY - drag.y;
       apply();
