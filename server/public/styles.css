@@ -541,7 +541,15 @@ a:focus-visible {
 }
 .map-frame .map-drawer.is-open { display: flex; }
 .map-drawer .tag { border-color: #b89a72; color: #3c2c1e; background: transparent; text-align: left; }
-.map-drawer .tag.active { border-color: #6e2c28; color: #f8efe0; background: #7a312b; }
+.map-drawer .tag.filter-tag { display: inline-flex; align-items: center; gap: 6px; }
+.map-drawer .tag.filter-tag.active { border-color: #6e5436; color: #3c2c1e; background: rgba(255, 248, 236, .7); }
+.map-drawer .tag.filter-tag.is-off { opacity: .38; }
+.filter-swatch { display: inline-grid; width: 16px; height: 16px; place-items: center; border: 1px solid #2c2218; border-radius: 50%; flex: 0 0 auto; }
+.filter-swatch svg { width: 11px; height: 11px; }
+.map-detail-title { display: flex; align-items: center; gap: 8px; }
+.map-detail-title h3 { margin: 0; }
+.map-detail-title .filter-swatch { width: 22px; height: 22px; }
+.map-detail-title .filter-swatch svg { width: 14px; height: 14px; }
 .field-map {
   position: relative;
   width: 100%;
@@ -647,12 +655,12 @@ a:focus-visible {
   transform: translate(-50%, -50%);
   transition: opacity .18s linear;
 }
+.map-marker svg { width: 68%; height: 68%; display: block; pointer-events: none; }
 .map-marker.cluster {
   width: 18px;
   height: 18px;
-  border-color: rgba(62, 46, 32, .55);
+  border-color: rgba(62, 46, 32, .75);
   color: #f3eadc;
-  background: rgba(74, 56, 40, .72);
   font-size: 10px;
   font-weight: 600;
 }
@@ -660,7 +668,8 @@ a:focus-visible {
 .map-marker.found { box-shadow: inset 0 0 0 1.5px #1f6b3a; }
 .field-map[data-detail="far"] .map-marker { opacity: 0; pointer-events: none; }
 .field-map[data-detail="mid"] .map-marker { width: 12px; height: 12px; opacity: .58; font-size: 0; }
-.field-map[data-detail="mid"] .map-marker span { visibility: hidden; }
+.field-map[data-detail="mid"] .map-marker span,
+.field-map[data-detail="mid"] .map-marker svg { visibility: hidden; }
 .field-map[data-detail="mid"] .map-marker.cluster { width: 16px; height: 16px; opacity: .7; font-size: 9px; }
 .field-map[data-detail="mid"] .map-marker.cluster span { visibility: visible; }
 .field-map[data-detail="close"] .map-marker { width: 22px; height: 22px; opacity: .92; font-size: 11px; }

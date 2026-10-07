@@ -54,7 +54,7 @@ const state = {
   coachBusy: false,
   mapLocations: [],
   baseMap: [],
-  mapCategory: "All",
+  disabledMapCategories: new Set(),
   selectedMapId: null,
   legendaries: [],
   animals: [],
@@ -904,7 +904,7 @@ function openEntry(view, id) {
 function showOnMap(id) {
   const item = state.mapLocations.find(entry => entry.id === id);
   if (!item || !modeMatches(item)) return;
-  state.mapCategory = item.category;
+  state.disabledMapCategories.delete(item.category);
   state.selectedMapId = id;
   setView("map");
   renderMapTags();
@@ -1686,37 +1686,53 @@ function rebuildMap() {
   renderMap();
 }
 
+function mapCategoryOn(category) {
+  return !state.disabledMapCategories.has(category);
+}
+
 function renderMapTags() {
   const visible = state.mapLocations.filter(modeMatches);
-  const categories = ["All", ...new Set(visible.map(item => item.category))];
-  if (!categories.includes(state.mapCategory)) state.mapCategory = "All";
+  const present = [...new Set(visible.map(item => item.category))];
+  const categories = MARKER_ORDER.filter(category => present.includes(category));
+  for (const category of present) if (!categories.includes(category)) categories.push(category);
   $("#mapTags").replaceChildren();
+  const all = document.createElement("button");
+  all.type = "button";
+  all.className = `tag filter-tag${state.disabledMapCategories.size ? "" : " active"}`;
+  all.textContent = "All";
+  all.onclick = () => {
+    state.disabledMapCategories.clear();
+    state.selectedMapId = null;
+    renderMapTags();
+    renderMap();
+  };
+  $("#mapTags").appendChild(all);
+  const legend = document.createElement("div");
+  legend.className = "map-legend";
   for (const category of categories) {
+    const style = styleFor(category);
+    const count = visible.filter(item => item.category === category).length;
+    const on = mapCategoryOn(category);
     const button = document.createElement("button");
-    button.className = `tag${state.mapCategory === category ? " active" : ""}`;
-    button.textContent = category;
+    button.type = "button";
+    button.className = `tag filter-tag${on ? " active" : " is-off"}`;
+    button.setAttribute("aria-pressed", on ? "true" : "false");
+    const swatch = document.createElement("span");
+    swatch.className = "filter-swatch";
+    swatch.style.background = style.color;
+    swatch.style.color = style.ink;
+    swatch.append(markerGlyph(style.glyph));
+    const name = document.createElement("span");
+    name.textContent = `${style.label}  ${count}`;
+    button.append(swatch, name);
     button.onclick = () => {
-      state.mapCategory = category;
+      if (on) state.disabledMapCategories.add(category);
+      else state.disabledMapCategories.delete(category);
       state.selectedMapId = null;
       renderMapTags();
       renderMap();
     };
-    $("#mapTags").appendChild(button);
-  }
-  const legend = document.createElement("div");
-  legend.className = "map-legend";
-  const numbered = visible.filter(item => state.mapCategory === "All" || item.category === state.mapCategory);
-  assignMapNumbers(numbered);
-  for (const item of [...numbered].sort((a, b) => a.mapNumber - b.mapNumber)) {
-    const row = document.createElement("button");
-    row.type = "button";
-    row.className = "legend-item";
-    row.textContent = `${item.mapNumber}  ${item.title}`;
-    row.onclick = () => {
-      $("#fieldMap")?.frontierZoomTo?.(3.6, item.x, item.y);
-      showMapDetail(item);
-    };
-    legend.appendChild(row);
+    legend.appendChild(button);
   }
   $("#mapTags").appendChild(legend);
 }
@@ -1726,10 +1742,26 @@ function showMapDetail(item) {
   renderMap();
   const detail = $("#mapDetail");
   detail.replaceChildren();
+  const style = styleFor(item.category);
+  const heading = document.createElement("div");
+  heading.className = "map-detail-title";
+  const swatch = document.createElement("span");
+  swatch.className = "filter-swatch";
+  swatch.style.background = style.color;
+  swatch.style.color = style.ink;
+  swatch.append(markerGlyph(style.glyph));
   const title = document.createElement("h3");
   title.textContent = item.title;
+  heading.append(swatch, title);
+  const facts = [];
+  if (item.breed) facts.push(`Breed: ${item.breed}`);
+  if (item.coat) facts.push(`Coat: ${item.coat}`);
+  if (item.obtain) facts.push(item.obtain);
+  if (item.price) facts.push(`Price: ${item.price}`);
+  if (item.chapter) facts.push(item.chapter);
+  if (item.shop) facts.push("Shop");
   const body = document.createElement("p");
-  body.textContent = `${item.region} • ${item.mode}\n\n${item.directions}\n\n${item.note}`;
+  body.textContent = `${facts.length ? `${facts.join("\n")}\n\n` : ""}${item.region} • ${item.mode}\n\n${item.directions}\n\n${item.note}`;
   const actions = document.createElement("div");
   actions.className = "map-actions";
   const ask = document.createElement("button");
@@ -1753,7 +1785,7 @@ function showMapDetail(item) {
     renderMap();
   }));
   detail.classList.add("is-open");
-  detail.append(title, body, grid, actions);
+  detail.append(heading, body, grid, actions);
 }
 
 function assignMapNumbers(items) {
@@ -1764,7 +1796,7 @@ function assignMapNumbers(items) {
 
 function renderMap() {
   const items = state.mapLocations.filter(item => {
-    const categoryMatch = state.mapCategory === "All" || item.category === state.mapCategory;
+    const categoryMatch = mapCategoryOn(item.category);
     return categoryMatch && modeMatches(item);
   });
   assignMapNumbers(items);
@@ -2004,11 +2036,64 @@ function mapViewportScale(viewport) {
 }
 
 function markerKind(item) {
-  if (item.category === "Legendary") return " legendary";
-  if (item.category === "Secrets") return " secret";
+  const classes = [];
+  if (item.category === "Legendary") classes.push("legendary");
+  if (item.category === "Secrets") classes.push("secret");
   const hidden = String(item.category || "").toLowerCase();
-  if (hidden === "cave" || hidden === "waterfall" || hidden === "mine" || hidden === "underground" || hidden === "mountain") return ` ${hidden}`;
-  return "";
+  if (hidden === "cave" || hidden === "waterfall" || hidden === "mine" || hidden === "underground" || hidden === "mountain") classes.push(hidden);
+  const slug = String(item.category || "pin").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  classes.push(`kind-${slug}`);
+  return classes.length ? ` ${classes.join(" ")}` : "";
+}
+
+const MARKER_ORDER = ["Gold", "Treasure", "Legendary", "Fish", "Secrets", "Weapons", "Ammo", "Horses", "Money", "Online Gold", "Valuables"];
+
+const MARKER_STYLES = {
+  Gold: { color: "#e2b23a", ink: "#2c2218", glyph: "bars", label: "Gold bars" },
+  Treasure: { color: "#e07a2f", ink: "#2c2218", glyph: "xmark", label: "Treasure" },
+  Legendary: { color: "#8e1e24", ink: "#f8efe0", glyph: "paw", label: "Legendary animals" },
+  Fish: { color: "#1f7a78", ink: "#f8efe0", glyph: "fish", label: "Legendary fish" },
+  Secrets: { color: "#6d4ea3", ink: "#f8efe0", glyph: "eye", label: "Secrets" },
+  Weapons: { color: "#4d6278", ink: "#f8efe0", glyph: "guns", label: "Weapons" },
+  Ammo: { color: "#2f6b3a", ink: "#f8efe0", glyph: "bullet", label: "Ammo" },
+  Horses: { color: "#8a4b2f", ink: "#f8efe0", glyph: "horse", label: "Rare horses" },
+  Money: { color: "#c4a35a", ink: "#2c2218", glyph: "coin", label: "Money" },
+  "Online Gold": { color: "#d4a017", ink: "#2c2218", glyph: "coin", label: "Online gold" },
+  Valuables: { color: "#b08d57", ink: "#2c2218", glyph: "coin", label: "Valuables" }
+};
+
+const MARKER_GLYPHS = {
+  bars: '<path fill="currentColor" d="M4 6.5h16v2.4H4zm0 4.3h16v2.4H4zm0 4.3h16V18H4z"/>',
+  xmark: '<path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/>',
+  paw: '<circle cx="7.5" cy="8" r="1.7" fill="currentColor"/><circle cx="12" cy="6.4" r="1.7" fill="currentColor"/><circle cx="16.5" cy="8" r="1.7" fill="currentColor"/><ellipse cx="12" cy="15.2" rx="4.2" ry="3.1" fill="currentColor"/>',
+  fish: '<path fill="currentColor" d="M3 12l5.2-3.6c2.6-1.2 6.4-1.3 9.4.4 1.2 1.6 1.3 3.6 0 5.2-3 1.8-6.8 1.7-9.4.4L3 12z"/><circle cx="15.2" cy="12" r=".8" fill="#2a1c12"/>',
+  eye: '<ellipse cx="12" cy="12" rx="7" ry="4" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2" fill="currentColor"/>',
+  cave: '<path fill="currentColor" d="M3 18V9.5L8 4l4 3.2L16 4l5 5.5V18H3z"/>',
+  guns: '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 16.5l8.5-8.5M6.5 6.5h3.2l2 2M15 4.5l4.5 4.5-2.2 2.2-4.5-4.5zM5 18l2.6-.8"/>',
+  bullet: '<path fill="currentColor" d="M9.2 4h5.6l.8 3.2H8.4zM8.2 7.2h7.6V17l-3.8 2.4L8.2 17z"/>',
+  horse: '<path fill="currentColor" d="M8 16.5c.2-2.6 2-4.6 4.6-5.4.2-1.8 1.4-3.6 3.2-4.2.7 1.1.5 2.2-.3 2.9 1.5.5 2.6 1.5 3 2.8l1.6 1.1-1.9.7.5 2.1h-2.3l-.7-2c-1 .5-2.2.7-3.2.4l-.6 2.2H9.2l.7-2.4C8.4 15.2 8 15.8 8 16.5z"/>',
+  coin: '<circle cx="12" cy="12" r="6.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M12 8.2v7.6M10.2 10.1c.5-.8 3.2-.9 3.4.5.2 1.1-.8 1.4-1.8 1.6s-1.7.6-1.5 1.6c.3 1.2 2.8 1.2 3.4.2"/>'
+};
+
+function styleFor(category) {
+  if (category === "Cave" || category === "Waterfall" || category === "Mine" || category === "Underground" || category === "Mountain") {
+    return { color: "#5c4030", ink: "#f8efe0", glyph: "cave", label: category };
+  }
+  return MARKER_STYLES[category] || { color: "#4a3828", ink: "#f8efe0", glyph: "xmark", label: category || "Place" };
+}
+
+function markerGlyph(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  svg.innerHTML = MARKER_GLYPHS[name] || MARKER_GLYPHS.xmark;
+  return svg;
+}
+
+function dominantCategory(items) {
+  const counts = new Map();
+  for (const item of items) counts.set(item.category, (counts.get(item.category) || 0) + 1);
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))[0][0];
 }
 
 function spreadPins(items, scale = 1) {
@@ -2083,16 +2168,20 @@ function paintMarkers(layer, items, activeId, onSelect) {
   const mapH = stage?.clientHeight || viewport?.clientHeight || 1;
   const found = foundIds();
   layer.replaceChildren();
-  let number = 0;
   for (const group of groupPins(items, scale, mapW, mapH)) {
     const marker = document.createElement("button");
     marker.type = "button";
     marker.style.left = `${group.x}%`;
     marker.style.top = `${group.y}%`;
-    const label = document.createElement("span");
     if (group.cluster) {
-      marker.className = "map-marker cluster";
+      const style = styleFor(dominantCategory(group.items));
+      const kinds = [...new Set(group.items.flatMap(item => markerKind(item).trim().split(/\s+/)).filter(Boolean))];
+      marker.className = `map-marker cluster ${kinds.join(" ")}`.trim();
+      marker.style.background = style.color;
+      marker.style.color = style.ink;
+      const label = document.createElement("span");
       label.textContent = String(group.items.length);
+      marker.appendChild(label);
       marker.title = `${group.items.length} places`;
       marker.setAttribute("aria-label", `${group.items.length} places. Zoom in.`);
       marker.onclick = event => {
@@ -2101,11 +2190,13 @@ function paintMarkers(layer, items, activeId, onSelect) {
       };
     } else {
       const item = group.item;
+      const style = styleFor(item.category);
       const active = activeId === item.id ? " active" : "";
       const foundClass = found.has(item.id) ? " found" : "";
       marker.className = `map-marker${markerKind(item)}${active}${foundClass}`;
-      label.textContent = String(item.mapNumber || number + 1);
-      number += 1;
+      marker.style.background = style.color;
+      marker.style.color = style.ink;
+      marker.append(markerGlyph(style.glyph));
       const name = item.title || item.name;
       marker.title = name;
       marker.setAttribute("aria-label", name);
@@ -2115,7 +2206,6 @@ function paintMarkers(layer, items, activeId, onSelect) {
       };
     }
     marker.style.transform = `translate(-50%, -50%) scale(${1 / scale})`;
-    marker.appendChild(label);
     layer.appendChild(marker);
   }
 }
@@ -2389,27 +2479,31 @@ function mountSchematicMap(viewport, onZoom) {
         ? state.hiddenPlaces.filter(modeMatches)
         : state.mapLocations.filter(modeMatches);
       const label = item => `${item.title || ""} ${item.name || ""}`.toLowerCase();
-      const place = MAP_GAZETTEER.find(entry => entry.name === query)
-        || MAP_GAZETTEER.find(entry => entry.name.startsWith(query))
-        || MAP_GAZETTEER.find(entry => entry.name.includes(query));
-      const item = pool.find(entry => label(entry) === query)
-        || pool.find(entry => label(entry).startsWith(query))
-        || pool.find(entry => label(entry).includes(query));
+      const haystack = item => `${label(item)} ${item.breed || ""} ${item.coat || ""}`.toLowerCase();
+      const exact = pool.find(entry => label(entry) === query);
+      const gazExact = MAP_GAZETTEER.find(entry => entry.name === query);
+      const starts = pool.find(entry => label(entry).startsWith(query));
+      const gazStarts = MAP_GAZETTEER.find(entry => entry.name.startsWith(query));
+      const includes = pool.find(entry => haystack(entry).includes(query));
+      const gazIncludes = MAP_GAZETTEER.find(entry => entry.name.includes(query));
+      const regional = pool.find(entry => `${haystack(entry)} ${(entry.region || "").toLowerCase()}`.includes(query));
+      const item = exact || (gazExact ? null : starts) || (gazExact || gazStarts ? null : includes) || (gazExact || gazStarts || gazIncludes ? null : regional);
+      const place = item ? null : (gazExact || gazStarts || (includes ? null : gazIncludes));
       if (!item && !place) {
-        const regional = pool.find(entry => `${label(entry)} ${(entry.region || "").toLowerCase()}`.includes(query));
-        if (!regional) {
-          search.setCustomValidity("No matching place");
-          search.reportValidity();
-          return;
-        }
-        search.setCustomValidity("");
-        if (hidden) showHiddenDetail(regional);
-        else showMapDetail(regional);
-        viewport.frontierZoomTo(4.2, regional.x, regional.y);
+        search.setCustomValidity("No matching place");
+        search.reportValidity();
         return;
       }
       search.setCustomValidity("");
       if (place && !item) {
+        state.selectedMapId = null;
+        state.selectedHiddenId = null;
+        const detail = $(hidden ? "#hiddenDetail" : "#mapDetail");
+        if (detail) {
+          detail.classList.remove("is-open");
+          detail.replaceChildren();
+        }
+        if (!hidden) renderMap();
         viewport.frontierZoomTo(3.4, place.x, place.y);
         return;
       }
@@ -2420,8 +2514,8 @@ function mountSchematicMap(viewport, onZoom) {
         }
         showHiddenDetail(item);
       } else {
-        if (state.mapCategory !== "All" && item.category !== state.mapCategory) {
-          state.mapCategory = "All";
+        if (!mapCategoryOn(item.category)) {
+          state.disabledMapCategories.delete(item.category);
           renderMapTags();
         }
         showMapDetail(item);
