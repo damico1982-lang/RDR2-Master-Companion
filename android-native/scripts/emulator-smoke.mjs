@@ -457,7 +457,17 @@ async function mapShot(name, elementId, scale, x, y, detailName) {
       document.querySelectorAll(".view").forEach(element => element.classList.remove("active"));
       document.getElementById(panelId)?.classList.add("active");
       const map = document.getElementById(${JSON.stringify(elementId)});
+      const frame = map?.closest(".map-frame");
+      if (frame) {
+        frame.classList.add("is-expanded");
+        const expand = frame.querySelector(".map-expand");
+        if (expand) {
+          expand.textContent = "Close";
+          expand.setAttribute("aria-pressed", "true");
+        }
+      }
       map?.scrollIntoView({ block: "start", behavior: "auto" });
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       if (map && map.frontierZoomTo) map.frontierZoomTo(${scale}, ${x}, ${y});
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const stage = map?.querySelector(".map-stage");

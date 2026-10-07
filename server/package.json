@@ -1,6 +1,6 @@
 {
   "name": "frontier-guide-backend",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "description": "Protected live AI backend for the Frontier Guide Android companion",
   "private": true,
   "type": "module",

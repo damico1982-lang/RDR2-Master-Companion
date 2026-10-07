@@ -64,7 +64,7 @@ test("GET /api/health stays public for Render and reports readiness", async () =
       model: "gpt-6-luna",
       authRequired: true,
       authorized: false,
-      version: "1.5.2",
+      version: "1.5.3",
       tts: {
         enabled: true,
         model: "gpt-4o-mini-tts",

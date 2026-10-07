@@ -1972,7 +1972,7 @@ function spreadPins(items, scale = 1) {
 }
 
 function groupPins(items, scale) {
-  if (scale >= 1.55) {
+  if (scale >= 3.2) {
     return spreadPins(items, scale).map(pin => ({
       item: pin.item,
       items: [pin.item],
@@ -1981,7 +1981,8 @@ function groupPins(items, scale) {
       cluster: false
     }));
   }
-  const threshold = 5.6 / Math.max(scale, 1);
+  const far = scale < 1.8;
+  const threshold = far ? 14 : 6;
   const groups = [];
   for (const item of items) {
     const x = Number(item.x);
@@ -2006,9 +2007,12 @@ function groupPins(items, scale) {
       }
       match.x = sumX / count;
       match.y = sumY / count;
-      match.cluster = true;
       match.item = null;
     }
+  }
+  for (const group of groups) {
+    group.cluster = far || group.items.length > 1;
+    if (group.cluster) group.item = null;
   }
   return groups;
 }
@@ -2164,6 +2168,7 @@ function mountSchematicMap(viewport, onZoom) {
     }
     apply();
   };
+  viewport.frontierReflow = () => apply();
   viewport.frontierZoomTo = (nextScale, xPercent, yPercent) => {
     const cw = viewport.clientWidth || 1;
     const ch = viewport.clientHeight || 1;
@@ -2190,6 +2195,27 @@ function mountSchematicMap(viewport, onZoom) {
     actionButton("ghost compact", "Reset map", () => { scale = 1; x = 0; y = 0; apply(); })
   );
   viewport.parentElement?.insertBefore(tools, viewport);
+  const frame = viewport.closest(".map-frame");
+  const filterButton = frame?.querySelector(".map-filter-toggle");
+  const drawer = frame?.querySelector(".map-drawer");
+  if (filterButton && drawer && !filterButton.dataset.bound) {
+    filterButton.dataset.bound = "1";
+    filterButton.addEventListener("click", () => {
+      const open = drawer.classList.toggle("is-open");
+      filterButton.setAttribute("aria-expanded", open ? "true" : "false");
+      filterButton.textContent = open ? "Hide filters" : "Filters";
+    });
+  }
+  const expandButton = frame?.querySelector(".map-expand");
+  if (expandButton && frame && !expandButton.dataset.bound) {
+    expandButton.dataset.bound = "1";
+    expandButton.addEventListener("click", () => {
+      const open = frame.classList.toggle("is-expanded");
+      expandButton.textContent = open ? "Close" : "Expand";
+      expandButton.setAttribute("aria-pressed", open ? "true" : "false");
+      viewport.frontierReflow?.();
+    });
+  }
   const distance = () => {
     const points = [...pointers.values()];
     if (points.length < 2) return 0;
