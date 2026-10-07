@@ -492,25 +492,26 @@ a:focus-visible {
   overflow: hidden;
   border: 0;
   border-radius: 0;
-  background: #d2b895;
+  background: #d6be9c;
 }
 .map-frame { position: absolute; inset: 0; }
 .field-map {
   position: absolute;
   inset: 0;
   overflow: hidden;
-  background: #d2b895;
+  background: #d6be9c;
   touch-action: none;
   overscroll-behavior: none;
 }
-.field-map .leaflet-container {
-  width: 100%;
-  height: 100%;
-  background: #d2b895;
+.field-map.leaflet-container,
+.field-map .leaflet-pane,
+.field-map .leaflet-map-pane {
+  background: #d6be9c;
   touch-action: none;
   outline: none;
   font-family: "Liberation Serif", Georgia, "Times New Roman", serif;
 }
+.field-map.leaflet-container { width: 100%; height: 100%; }
 .leaflet-control-container,
 .leaflet-control-attribution { display: none; }
 .field-map::after {
@@ -626,6 +627,80 @@ a:focus-visible {
   background: #a88862;
   touch-action: none;
 }
+.map-sheet > button.map-sheet-handle {
+  display: block;
+  width: 100%;
+  height: 22px;
+  margin: 0 0 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.map-sheet > button.map-sheet-handle::before {
+  display: block;
+  width: 40px;
+  height: 4px;
+  margin: 6px auto 0;
+  border-radius: 999px;
+  background: #6e5436;
+  content: "";
+}
+.map-sheet .layer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0 0 6px;
+  border: 1px solid #c4ae8c;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #2a2118;
+  background: #f7f1e4;
+  font: 700 14px/1.2 Georgia, "Times New Roman", serif;
+  text-align: left;
+}
+.map-sheet .layer-row.is-on { border-color: #6e5436; background: #fff8ec; color: #2a2118; }
+.map-sheet .layer-name { flex: 1 1 auto; color: #2a2118; }
+.map-sheet .layer-count { color: #5c4632; font-size: 13px; font-variant-numeric: tabular-nums; }
+.filter-check {
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1.5px solid #6e5436;
+  border-radius: 3px;
+  color: #2a2118;
+  background: #fff;
+  font-size: 12px;
+  line-height: 1;
+}
+.filter-check.is-on { color: #fff8ec; background: #6e5436; }
+.map-cluster {
+  display: grid;
+  width: 22px !important;
+  height: 22px !important;
+  margin: 0 !important;
+  place-items: center;
+  border: 1px solid rgba(62, 46, 32, .55);
+  border-radius: 50%;
+  color: #f4ead8;
+  background: rgba(92, 74, 52, .78);
+  box-shadow: 0 1px 2px rgba(40, 24, 12, .28);
+  font: 700 11px/1 Georgia, "Times New Roman", serif;
+}
+.map-dot {
+  width: 8px !important;
+  height: 8px !important;
+  margin: 0 !important;
+  border: 1px solid rgba(62, 46, 32, .7);
+  border-radius: 50%;
+  box-shadow: none;
+}
+#hiddenList { display: none !important; }
+.map-detail.map-sheet-card:not(.is-open) { display: none !important; }
 .map-detail-kicker {
   display: flex;
   align-items: center;

@@ -1104,11 +1104,24 @@ function renderHiddenTags() {
   if (!row) return;
   const categories = ["All", "Cave", "Waterfall", "Mine", "Underground", "Mountain"];
   if (!categories.includes(state.hiddenCategory)) state.hiddenCategory = "All";
-  row.replaceChildren();
+  const pool = state.hiddenPlaces.filter(modeMatches);
+  row.replaceChildren(sheetHandle(row));
   for (const category of categories) {
     const button = document.createElement("button");
-    button.className = `tag${state.hiddenCategory === category ? " active" : ""}`;
-    button.textContent = category;
+    button.type = "button";
+    const on = state.hiddenCategory === category;
+    button.className = `layer-row${on ? " is-on" : ""}`;
+    button.setAttribute("aria-pressed", on ? "true" : "false");
+    const check = document.createElement("span");
+    check.className = `filter-check${on ? " is-on" : ""}`;
+    check.textContent = on ? "✓" : "";
+    const label = document.createElement("span");
+    label.className = "layer-name";
+    label.textContent = category;
+    const tally = document.createElement("span");
+    tally.className = "layer-count";
+    tally.textContent = String(category === "All" ? pool.length : pool.filter(item => item.category === category).length);
+    button.append(check, label, tally);
     button.onclick = () => {
       state.hiddenCategory = category;
       state.selectedHiddenId = null;
@@ -1886,24 +1899,53 @@ function mapCategoryOn(category) {
   return !state.disabledMapCategories.has(category);
 }
 
+function closeLayerSheet(sheet) {
+  if (!sheet) return;
+  sheet.hidden = true;
+  sheet.closest(".map-frame")?.querySelector(".map-layers-toggle")?.setAttribute("aria-expanded", "false");
+}
+
+function sheetHandle(sheet) {
+  const handle = document.createElement("button");
+  handle.type = "button";
+  handle.className = "map-sheet-handle";
+  handle.setAttribute("aria-label", "Close layers");
+  handle.onclick = () => closeLayerSheet(sheet);
+  return handle;
+}
+
 function renderMapTags() {
+  const sheet = $("#mapTags");
+  if (!sheet) return;
   const visible = state.mapLocations.filter(modeMatches);
   const present = [...new Set(visible.map(item => item.category))];
   const categories = MARKER_ORDER.filter(category => present.includes(category));
   for (const category of present) if (!categories.includes(category)) categories.push(category);
-  $("#mapTags").replaceChildren();
+  const allOn = categories.length > 0 && categories.every(mapCategoryOn);
+  sheet.replaceChildren(sheetHandle(sheet));
   const all = document.createElement("button");
   all.type = "button";
-  all.className = `tag filter-tag${state.disabledMapCategories.size ? "" : " active"}`;
-  all.textContent = "All";
+  all.className = `layer-row layer-all${allOn ? " is-on" : ""}`;
+  all.setAttribute("aria-pressed", allOn ? "true" : "false");
+  const mark = document.createElement("span");
+  mark.className = `filter-check${allOn ? " is-on" : ""}`;
+  mark.textContent = allOn ? "✓" : "";
+  const name = document.createElement("span");
+  name.className = "layer-name";
+  name.textContent = allOn ? "None" : "All";
+  const total = document.createElement("span");
+  total.className = "layer-count";
+  total.textContent = String(visible.length);
+  all.append(mark, name, total);
   all.onclick = () => {
-    state.disabledMapCategories.clear();
+    if (allOn) categories.forEach(category => state.disabledMapCategories.add(category));
+    else state.disabledMapCategories.clear();
     state.selectedMapId = null;
     $("#mapDetail")?.classList.remove("is-open");
     renderMapTags();
     renderMap();
   };
-  $("#mapTags").appendChild(all);
+  sheet.appendChild(all);
   const legend = document.createElement("div");
   legend.className = "map-legend";
   for (const category of categories) {
@@ -1912,16 +1954,23 @@ function renderMapTags() {
     const on = mapCategoryOn(category);
     const button = document.createElement("button");
     button.type = "button";
-    button.className = `tag filter-tag${on ? " active" : " is-off"}`;
+    button.className = `layer-row${on ? " is-on" : ""}`;
     button.setAttribute("aria-pressed", on ? "true" : "false");
+    const check = document.createElement("span");
+    check.className = `filter-check${on ? " is-on" : ""}`;
+    check.textContent = on ? "✓" : "";
     const swatch = document.createElement("span");
     swatch.className = "filter-swatch";
     swatch.style.background = style.color;
     swatch.style.color = style.ink;
     swatch.append(markerGlyph(style.glyph));
-    const name = document.createElement("span");
-    name.textContent = `${style.label}  ${count}`;
-    button.append(swatch, name);
+    const label = document.createElement("span");
+    label.className = "layer-name";
+    label.textContent = style.label;
+    const tally = document.createElement("span");
+    tally.className = "layer-count";
+    tally.textContent = String(count);
+    button.append(check, swatch, label, tally);
     button.onclick = () => {
       if (on) state.disabledMapCategories.add(category);
       else state.disabledMapCategories.delete(category);
@@ -1932,7 +1981,7 @@ function renderMapTags() {
     };
     legend.appendChild(button);
   }
-  $("#mapTags").appendChild(legend);
+  sheet.appendChild(legend);
 }
 
 function showMapDetail(item) {
@@ -2283,40 +2332,110 @@ const MAP_FRAME = typeof L === "undefined" ? null : L.latLngBounds([-144, 0], [0
 const ACCURACY_MAP = new URLSearchParams(location.search).get("accuracy") === "1";
 
 function paintLeaflet(viewport, items, activeId, onSelect) {
+  if (!viewport) return;
+  viewport._pinItems = items;
+  viewport._pinActive = activeId;
+  viewport._pinSelect = onSelect;
+  drawPins(viewport);
+}
+
+function drawPins(viewport) {
   const map = viewport?.frontierMap;
-  if (!map) return;
+  if (!map || !viewport._pinItems) return;
   if (map._pinLayer) map.removeLayer(map._pinLayer);
-  const stacks = new Map();
-  const layer = L.layerGroup();
+  const items = viewport._pinItems;
+  const activeId = viewport._pinActive;
+  const onSelect = viewport._pinSelect;
   const found = foundIds();
-  for (const item of items) {
-    const key = `${item.lat}|${item.lng}`;
-    const index = stacks.get(key) || 0;
-    stacks.set(key, index + 1);
-    const style = styleFor(item.category);
-    const angle = index * 1.15;
-    const radius = index === 0 ? 0 : 12 + (index - 1) * 3;
-    const icon = L.divIcon({
-      className: `map-marker${markerKind(item)}${activeId === item.id ? " active" : ""}${found.has(item.id) ? " found" : ""}`,
-      html: `<svg viewBox="0 0 24 24" aria-hidden="true">${MARKER_GLYPHS[style.glyph] || MARKER_GLYPHS.xmark}</svg>`,
-      iconSize: [22, 22],
-      iconAnchor: [11 - Math.cos(angle) * radius, 11 - Math.sin(angle) * radius]
-    });
-    const marker = L.marker([item.lat, item.lng], { icon, pane: "pins", keyboard: false, bubblingMouseEvents: false });
-    marker.on("click", event => {
-      if (event.originalEvent) event.originalEvent.stopPropagation();
-      onSelect(item);
-    });
-    marker.on("add", () => {
-      const element = marker.getElement();
-      if (!element) return;
-      element.style.background = style.color;
-      element.style.color = style.ink;
-      const name = item.title || item.name || "Marker";
-      element.title = name;
-      element.setAttribute("aria-label", name);
-    });
-    layer.addLayer(marker);
+  const layer = L.layerGroup();
+  if (viewport.dataset.detail === "far") {
+    const groups = new Map();
+    for (const item of items) {
+      const point = map.latLngToContainerPoint([item.lat, item.lng]);
+      const key = `${Math.round(point.x / 42)}:${Math.round(point.y / 42)}`;
+      const group = groups.get(key) || [];
+      group.push(item);
+      groups.set(key, group);
+    }
+    for (const group of groups.values()) {
+      if (group.length === 1) {
+        const item = group[0];
+        const style = styleFor(item.category);
+        const icon = L.divIcon({
+          className: "map-dot",
+          html: "",
+          iconSize: [8, 8],
+          iconAnchor: [4, 4]
+        });
+        const marker = L.marker([item.lat, item.lng], { icon, pane: "pins", keyboard: false, bubblingMouseEvents: false });
+        marker.on("click", event => {
+          if (event.originalEvent) event.originalEvent.stopPropagation();
+          onSelect(item);
+        });
+        marker.on("add", () => {
+          const element = marker.getElement();
+          if (!element) return;
+          element.style.background = style.color;
+          const name = item.title || item.name || "Marker";
+          element.title = name;
+          element.setAttribute("aria-label", name);
+        });
+        layer.addLayer(marker);
+      } else {
+        const lat = group.reduce((sum, item) => sum + item.lat, 0) / group.length;
+        const lng = group.reduce((sum, item) => sum + item.lng, 0) / group.length;
+        const icon = L.divIcon({
+          className: "map-cluster",
+          html: String(group.length),
+          iconSize: [22, 22],
+          iconAnchor: [11, 11]
+        });
+        const marker = L.marker([lat, lng], { icon, pane: "pins", keyboard: false, bubblingMouseEvents: false });
+        marker.on("click", event => {
+          if (event.originalEvent) event.originalEvent.stopPropagation();
+          viewport._userMoved = true;
+          map.setView([lat, lng], Math.min(map.getMaxZoom(), map.getZoom() + 1.4), { animate: true });
+        });
+        marker.on("add", () => {
+          const element = marker.getElement();
+          if (!element) return;
+          element.title = `${group.length} places`;
+          element.setAttribute("aria-label", element.title);
+        });
+        layer.addLayer(marker);
+      }
+    }
+  } else {
+    const stacks = new Map();
+    for (const item of items) {
+      const key = `${item.lat}|${item.lng}`;
+      const index = stacks.get(key) || 0;
+      stacks.set(key, index + 1);
+      const style = styleFor(item.category);
+      const angle = index * 1.15;
+      const radius = index === 0 ? 0 : 12 + (index - 1) * 3;
+      const icon = L.divIcon({
+        className: `map-marker${markerKind(item)}${activeId === item.id ? " active" : ""}${found.has(item.id) ? " found" : ""}`,
+        html: `<svg viewBox="0 0 24 24" aria-hidden="true">${MARKER_GLYPHS[style.glyph] || MARKER_GLYPHS.xmark}</svg>`,
+        iconSize: [22, 22],
+        iconAnchor: [11 - Math.cos(angle) * radius, 11 - Math.sin(angle) * radius]
+      });
+      const marker = L.marker([item.lat, item.lng], { icon, pane: "pins", keyboard: false, bubblingMouseEvents: false });
+      marker.on("click", event => {
+        if (event.originalEvent) event.originalEvent.stopPropagation();
+        onSelect(item);
+      });
+      marker.on("add", () => {
+        const element = marker.getElement();
+        if (!element) return;
+        element.style.background = style.color;
+        element.style.color = style.ink;
+        const name = item.title || item.name || "Marker";
+        element.title = name;
+        element.setAttribute("aria-label", name);
+      });
+      layer.addLayer(marker);
+    }
   }
   layer.addTo(map);
   map._pinLayer = layer;
@@ -2349,7 +2468,8 @@ function mountLeafletMap(viewport, paneId) {
   const pane = map.createPane("pins");
   pane.id = paneId;
   pane.style.zIndex = "650";
-  const layers = ["far", "mid", "close"].map(name => L.imageOverlay(`content/parchment-${name}.png`, MAP_FRAME));
+  const layers = ["far", "mid", "close"].map(name => L.imageOverlay(`content/parchment-${name}.jpg`, MAP_FRAME));
+  viewport._drawPins = () => drawPins(viewport);
   if (ACCURACY_MAP) {
     L.tileLayer("https://s.rsg.sc/sc/images/games/RDR2/map/game/{z}/{x}/{y}.jpg", {
       bounds: MAP_FRAME,
@@ -2365,6 +2485,7 @@ function mountLeafletMap(viewport, paneId) {
     const fit = Number.isFinite(viewport._fitZoom) ? viewport._fitZoom : map.getZoom();
     const ratio = Math.pow(2, map.getZoom() - fit);
     const detail = !Number.isFinite(ratio) || ratio < 1.8 ? "far" : ratio < 3.6 ? "mid" : "close";
+    const changed = viewport.dataset.detail !== detail;
     viewport.dataset.scale = ratio.toFixed(3);
     viewport.dataset.detail = detail;
     if (!ACCURACY_MAP) {
@@ -2372,6 +2493,7 @@ function mountLeafletMap(viewport, paneId) {
       layers[1].setOpacity(detail === "mid" ? 1 : 0);
       layers[2].setOpacity(detail === "close" ? 1 : 0);
     }
+    if (changed) viewport._drawPins?.();
   };
   const fitHome = () => {
     const box = viewport.getBoundingClientRect();
@@ -2379,12 +2501,14 @@ function mountLeafletMap(viewport, paneId) {
     fitting = true;
     map.setMinZoom(-2);
     map.invalidateSize({ animate: false });
-    map.fitBounds(MAP_FRAME, { animate: false, padding: [10, 10] });
+    const home = viewport._landBounds?.isValid?.() ? viewport._landBounds : MAP_FRAME;
+    map.fitBounds(home, { animate: false, padding: [12, 12] });
     viewport._fitZoom = map.getZoom();
     map.setMinZoom(viewport._fitZoom);
     viewport._userMoved = false;
     fitting = false;
     applyDetail();
+    viewport._drawPins?.();
     return true;
   };
   viewport.frontierReflow = () => {
@@ -2409,6 +2533,9 @@ function mountLeafletMap(viewport, paneId) {
   map.on("zoom move", () => {
     if (!fitting) viewport._userMoved = true;
     applyDetail();
+  });
+  map.on("moveend", () => {
+    if (!fitting && viewport.dataset.detail === "far") viewport._drawPins?.();
   });
   map.on("click", () => {
     const card = viewport.closest(".map-panel")?.querySelector(".map-detail");
@@ -2847,6 +2974,16 @@ $("#onlineDot").onclick = () => checkStatus(true);
 restoreCoachProfile();
 mountLeafletMap($("#fieldMap"), "mapMarkers");
 mountLeafletMap($("#hiddenMap"), "hiddenMarkers");
+fetch("content/land-bounds.json").then(response => response.ok ? response.json() : null).then(data => {
+  if (!data || !Number.isFinite(data.south) || !Number.isFinite(data.west) || !Number.isFinite(data.north) || !Number.isFinite(data.east)) return;
+  const bounds = L.latLngBounds([data.south, data.west], [data.north, data.east]);
+  for (const id of ["fieldMap", "hiddenMap"]) {
+    const node = document.getElementById(id);
+    if (!node) continue;
+    node._landBounds = bounds;
+    if (!node._userMoved) node.frontierReflow?.();
+  }
+}).catch(() => {});
 const coachStart = $("#coachStart");
 if (coachStart) coachStart.onclick = () => startCoach();
 const coachPause = $("#coachPause");
