@@ -2917,10 +2917,12 @@ function mountLeafletMap(viewport, paneId) {
   viewport._parchment = layers;
   viewport._drawPins = () => drawPins(viewport);
   const vectorPane = map.createPane("vectors");
-  vectorPane.style.zIndex = "350";
+  // Above the parchment image (overlay pane is 400) and below pins.
+  vectorPane.style.zIndex = "410";
+  vectorPane.style.background = "transparent";
   vectorPane.style.pointerEvents = "none";
   viewport._vectorPane = vectorPane;
-  const vectorRenderer = L.canvas({ padding: 0.5, pane: "vectors" });
+  const vectorRenderer = L.canvas({ padding: 1, pane: "vectors" });
   viewport._vectors = L.layerGroup().addTo(map);
   viewport._vectorsReady = false;
   const drawVectors = data => {
@@ -2939,7 +2941,7 @@ function mountLeafletMap(viewport, paneId) {
       });
     };
     stroke("rivers", { color: "#6c8084", weight: 1.5 });
-    stroke("borders", { color: "#4a3828", weight: 1.35, dashArray: "0 6.5" });
+    stroke("borders", { color: "#4a3828", weight: 1.6, dashArray: "1 6.5" });
     stroke("roads", { color: "#70543a", weight: 1.35 });
     stroke("rail", { color: "#48382a", weight: 1.3, dashArray: "6 5" });
     viewport._vectorsReady = true;
@@ -2947,7 +2949,7 @@ function mountLeafletMap(viewport, paneId) {
   fetch("content/map-lines.json")
     .then(response => response.json())
     .then(drawVectors)
-    .catch(() => { viewport._vectorsReady = true; });
+    .catch(() => { viewport._vectorsReady = false; });
   if (ACCURACY_MAP) {
     L.tileLayer("https://s.rsg.sc/sc/images/games/RDR2/map/game/{z}/{x}/{y}.jpg", {
       bounds: MAP_FRAME,

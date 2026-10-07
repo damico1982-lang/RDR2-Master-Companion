@@ -515,6 +515,10 @@ html.map-open body,
   outline: none;
   font-family: "Liberation Serif", Georgia, "Times New Roman", serif;
 }
+.field-map .leaflet-vectors-pane,
+.field-map .leaflet-vectors-pane canvas {
+  background: transparent !important;
+}
 .field-map.leaflet-container { width: 100%; height: 100%; }
 .leaflet-control-container,
 .leaflet-control-attribution { display: none; }

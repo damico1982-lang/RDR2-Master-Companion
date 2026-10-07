@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Draw the field map in the RDOMap frame.
 
-Zoom-4 game tiles are a tracing reference only. The files under content/ are
-our own parchment: filled water, stroked coast, roads, rail, and dotted
-borders. No tile pixels are copied into the output.
+Zoom-4 game tiles are a tracing reference only. The parchment JPEG is a text-free
+land wash. Water, coast, roads, rail, rivers, and borders are vectors in
+map-lines.json. No tile pixels are copied into the output.
 """
 import json
 from pathlib import Path
@@ -233,21 +233,15 @@ def stroke(mask, radius=1):
     return cv2.dilate(center.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel, kernel))).astype(bool)
 
 
-def paint_land(gray, lakes, text):
-    """Smooth land wash and lake fill only. Lines and letters stay out of the raster."""
+def paint_land(gray, text):
+    """Smooth land wash only. Water and strokes are vectors, so max zoom stays crisp."""
     cleaned = gray
     if text is not None and np.any(text):
         cleaned = cv2.inpaint(gray, text.astype(np.uint8), 4, cv2.INPAINT_TELEA)
     tone = cv2.GaussianBlur(cleaned, (0, 0), 16).astype(np.int16)
     delta = np.clip((tone - 158) // 11, -10, 5)
-    canvas = np.empty((HEIGHT, WIDTH, 3), dtype=np.uint8)
-    canvas[:] = PAPER
     shaded = np.clip(np.array(PAPER, np.int16) + delta[:, :, None], 0, 255).astype(np.uint8)
-    # Erode the baked lake so the vector coast, not the JPEG edge, is the shoreline.
-    lake_fill = cv2.erode(lakes.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))).astype(bool)
-    canvas[~lake_fill] = shaded[~lake_fill]
-    canvas[lake_fill] = WATER
-    return canvas
+    return np.ascontiguousarray(shaded)
 
 
 def _glyph_boxes(mask, min_height, max_height, max_width, min_fill):
@@ -513,7 +507,7 @@ def lake_rings(lakes):
             tops.append(index)
 
     def ring(index):
-        approx = cv2.approxPolyDP(contours[index], 0.85, True).reshape(-1, 2)
+        approx = cv2.approxPolyDP(contours[index], 0.45, True).reshape(-1, 2)
         points = []
         for x, y in approx:
             point = to_lng_lat(x, y)
@@ -602,39 +596,146 @@ def land_bounds(mask):
     return [round(south, 3), round(west, 3), round(north, 3), round(east, 3)]
 
 
+def drop_letterforms(mask):
+    """Short, wide, solid blobs are baked town names, not roads."""
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(mask.astype(np.uint8), connectivity=8)
+    kept = np.zeros(mask.shape, dtype=bool)
+    for index in range(1, count):
+        _x, _y, width, height, area = [int(value) for value in stats[index]]
+        fill = area / float(max(width * height, 1))
+        if height <= 18 and width >= 16 and width > height * 2.3 and fill > 0.32:
+            continue
+        kept[labels == index] = True
+    return kept
+
+
+def load_reference():
+    """1.7.3 parchment, used only to recover the stroke network the raster already showed."""
+    path = Path("/tmp/frontier-parchment-173.jpg")
+    if not path.exists():
+        import subprocess
+        path.write_bytes(subprocess.check_output(
+            ["git", "show", "cc055f8:server/public/content/parchment-close.jpg"],
+            cwd=ROOT,
+        ))
+    image = np.array(Image.open(path).convert("RGB"))
+    if image.shape[0] != HEIGHT or image.shape[1] != WIDTH:
+        raise SystemExit(f"reference parchment is {image.shape}")
+    return image
+
+
+def reference_strokes(reference, text):
+    """Centerlines of the 1.7.3 roads, rivers, rail, and dotted borders, without letterforms."""
+    image = reference.astype(np.int16)
+    blocked = cv2.dilate(text.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))).astype(bool)
+
+    def near(target, tol):
+        return np.abs(image - np.array(target, np.int16)).sum(axis=2) <= tol
+
+    water = near(WATER, 26)
+    blocked = blocked | cv2.dilate(water.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
+    roads = drop_letterforms(near(ROAD, 32) & ~blocked)
+    rivers = drop_letterforms(near((108, 128, 132), 34) & ~blocked)
+    dark = (
+        (image[:, :, 0] < 100) & (image[:, :, 1] < 84) & (image[:, :, 2] < 68) & (image[:, :, 0] > 45) & ~blocked
+    )
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(dark.astype(np.uint8), connectivity=8)
+    dots = np.zeros(dark.shape, np.uint8)
+    dashes = np.zeros(dark.shape, np.uint8)
+    for index in range(1, count):
+        _x, _y, width, height, area = [int(value) for value in stats[index]]
+        extent = max(width, height)
+        fill = area / float(max(width * height, 1))
+        aspect = width / max(height, 1)
+        if 10 <= area <= 160 and extent <= 18 and fill > 0.28 and 0.35 <= aspect <= 2.6:
+            dots[labels == index] = 255
+        elif area >= 8 and extent >= 8:
+            dashes[labels == index] = 255
+    borders = cv2.morphologyEx(dots, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (19, 19))) > 0
+    rail = cv2.morphologyEx(dashes, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))) > 0
+    rail &= ~borders
+    print(
+        "ref roads", int(roads.sum()),
+        "rivers", int(rivers.sum()),
+        "rail", int(rail.sum()),
+        "borders", int(borders.sum()),
+    )
+    return roads, rivers, rail, borders
+
+
+def raster_lines(lines, key, thickness=1):
+    canvas = np.zeros((HEIGHT, WIDTH), np.uint8)
+    polys = []
+    for line in lines.get(key) or []:
+        if len(line) < 2:
+            continue
+        polys.append(np.array([[[int(round(lng * UNIT)), int(round(-lat * UNIT))]] for lng, lat in line], np.int32))
+    if polys:
+        cv2.polylines(canvas, polys, False, 255, thickness, cv2.LINE_AA)
+    return canvas > 0
+
+
+def nearest_ink(mask, x, y):
+    ys, xs = np.where(mask)
+    if xs.size == 0:
+        return None
+    distance = (xs.astype(np.int32) - x) ** 2 + (ys.astype(np.int32) - y) ** 2
+    index = int(np.argmin(distance))
+    return int(xs[index]), int(ys[index]), round(float(np.sqrt(distance[index])) / UNIT, 2)
+
+
+def window_counts(masks, cx, cy, width, height):
+    x0 = max(0, int(cx - width / 2))
+    y0 = max(0, int(cy - height / 2))
+    x1 = min(WIDTH, x0 + width)
+    y1 = min(HEIGHT, y0 + height)
+    return {key: int(mask[y0:y1, x0:x1].sum()) for key, mask in masks.items()}
+
+
 def main():
     image = load_composite()
     gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
     text = find_text_mask(gray)
-    lakes, rivers = classify_water(image)
+    lakes, _rivers = classify_water(image)
     lakes = lakes.astype(bool)
-    rivers = rivers.astype(bool)
-    # Keep road and rail tracing off the water strokes and off baked-in lettering.
-    occupied = lakes | text | cv2.dilate(rivers.astype(np.uint8), np.ones((5, 5), np.uint8)).astype(bool)
-    roads, rail, borders, relief = line_masks(image, occupied, text)
-    print(
-        "water", round(float(lakes.mean()), 4),
-        "rivers", round(float(rivers.mean()), 4),
-        "roads", round(float(roads.mean()), 4),
-        "rail", round(float(rail.mean()), 4),
-        "borders", round(float(borders.mean()), 4),
-        "relief", round(float(relief.mean()), 4),
-    )
-    detail = paint_land(gray, lakes, text)
+    print("water", round(float(lakes.mean()), 4))
+    detail = paint_land(gray, text)
     # The 1.7.3 silhouette. A smooth wash must not shrink the cover-zoom frame.
     bounds = [-139.4, 3.8, -16.4, 172.7]
     print("landBounds", bounds)
     Image.fromarray(detail).resize((880, 720), Image.LANCZOS).save("/tmp/rdr2tiles/art-full.jpg", quality=86)
-    border_stroke = cv2.morphologyEx(
-        borders.astype(np.uint8), cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
-    ) > 0
+    roads, rivers, rail, borders = reference_strokes(load_reference(), text)
     lines = {
         "lakes": lake_rings(lakes),
-        "rivers": trace_paths(rivers, epsilon=0.55, min_pixels=6),
-        "roads": trace_paths(road_ribbon(roads & ~lakes), epsilon=0.55, min_pixels=6),
-        "rail": trace_paths(road_ribbon(rail & ~lakes), epsilon=0.55, min_pixels=6),
-        "borders": trace_paths(border_stroke, epsilon=0.9, min_pixels=8),
+        "rivers": trace_paths(rivers, epsilon=0.5, min_pixels=4),
+        "roads": trace_paths(roads, epsilon=0.5, min_pixels=4),
+        "rail": trace_paths(rail & ~lakes, epsilon=0.65, min_pixels=6),
+        "borders": trace_paths(borders & ~lakes, epsilon=0.8, min_pixels=8),
     }
+    masks = {key: raster_lines(lines, key) for key in ("roads", "rivers", "rail", "borders")}
+    for label, point in (("valentine", (1084, 536)), ("strawberry", (843, 700))):
+        print(label, {key: nearest_ink(mask, point[0], point[1]) for key, mask in masks.items()})
+    print("mid valentine", window_counts(masks, 1084, 536, 314, 494))
+    print("mid lemoyne", window_counts(masks, 1232, 792, 314, 494))
+    print("max road", window_counts(masks, 1094, 522, 28, 42))
+    print("max town", window_counts(masks, 1084, 536, 28, 42))
+    print("max strawberry", window_counts(masks, 843, 700, 28, 42))
+    if window_counts(masks, 1084, 536, 314, 494)["roads"] < 40:
+        raise SystemExit("valentine mid view has no roads")
+    if window_counts(masks, 1084, 536, 314, 494)["rivers"] < 20:
+        raise SystemExit("valentine mid view has no rivers")
+    if window_counts(masks, 1084, 536, 314, 494)["borders"] < 8:
+        raise SystemExit("valentine mid view has no borders")
+    preview = detail.copy()
+    for rings in lines["lakes"]:
+        outer = np.array([[[int(round(lng * UNIT)), int(round(-lat * UNIT))]] for lng, lat in rings[0]], np.int32)
+        cv2.fillPoly(preview, [outer], WATER)
+        cv2.polylines(preview, [outer], True, COAST, 2, cv2.LINE_AA)
+    preview[raster_lines(lines, "rivers", 2)] = (108, 128, 132)
+    preview[raster_lines(lines, "borders", 2)] = BORDER
+    preview[raster_lines(lines, "roads", 2)] = ROAD
+    preview[raster_lines(lines, "rail", 2)] = RAIL
+    Image.fromarray(preview).save("/tmp/rdr2tiles/vectors-preview.jpg", quality=80)
     for key, value in lines.items():
         points = sum(len(part) if key != "lakes" else sum(len(ring) for ring in part) for part in value)
         print(key, len(value), "points", points)
