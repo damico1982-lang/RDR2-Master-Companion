@@ -1211,7 +1211,9 @@ function sheetLine(label, text) {
   p.className = "map-detail-line";
   const name = document.createElement("b");
   name.textContent = label;
-  p.append(name, document.createTextNode(` ${text}`));
+  const body = document.createElement("span");
+  body.textContent = text;
+  p.append(name, body);
   return p;
 }
 
