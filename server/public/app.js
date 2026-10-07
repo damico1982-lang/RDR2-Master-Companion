@@ -184,6 +184,8 @@ function setView(view) {
     const map = document.getElementById(view === "map" ? "fieldMap" : "hiddenMap");
     requestAnimationFrame(() => map?.frontierReflow?.());
   }
+  if (view === "progress") syncSteamProgress();
+  if (view === "settings") renderSteamStatus();
   syncMapScrollLock();
 }
 
@@ -2748,6 +2750,12 @@ function canvasFromDataUrl(dataUrl) {
 async function currentCoachCanvas() {
   const profile = coach.profile || saveCoachProfile();
   const quality = profile.quality === "sharp" ? 0.86 : 0.72;
+  if (coach.source === "link") {
+    const src = await pullLinkFrame();
+    if (!src.startsWith("data:image")) return null;
+    const canvas = cropCanvas(await canvasFromDataUrl(src), profile.crop);
+    return { canvas, dataUrl: canvas.toDataURL("image/jpeg", quality) };
+  }
   if (coach.source === "camera") {
     const video = $("#coachVideo");
     if (!video || !video.videoWidth) return null;
@@ -2896,7 +2904,7 @@ async function analyzeCoachFrame(session, force = false) {
 async function startCoach() {
   haltCoach("");
   const profile = saveCoachProfile();
-  coach.source = profile.source === "screen" ? "screen" : "camera";
+  coach.source = profile.source === "screen" ? "screen" : profile.source === "link" ? "link" : "camera";
   coach.muted = $("#coachMute")?.dataset.muted === "1";
   coach.paused = false;
   coach.ownsScreen = false;
@@ -2905,7 +2913,13 @@ async function startCoach() {
   const session = coach.session;
   setCoachState("waiting", "Waiting for a readable game frame. A server health check does not mean the game is connected.");
   try {
-    if (coach.source === "camera") {
+    if (coach.source === "link") {
+      if (!localStorage.getItem("fg_link_token")) {
+        haltCoach("Pair Frontier Link in Settings first. The helper captures the Red Dead window only while its switch is on.");
+        return;
+      }
+      setCoachState("waiting", "Waiting for a frame from Frontier Link. The phone camera stays off.");
+    } else if (coach.source === "camera") {
       const video = $("#coachVideo");
       if (video) video.classList.remove("hidden");
       const opened = await openOwnedCamera("coach", video);
@@ -3042,5 +3056,258 @@ loadMap();
 loadFieldContent();
 checkStatus();
 showSavedUpdate();
+renderSteamStatus();
 window.speechSynthesis?.getVoices?.();
 window.speechSynthesis?.addEventListener?.("voiceschanged", () => {});
+setInterval(pollLink, 8000);
+
+function steamId() {
+  return localStorage.getItem("fg_steam_id") || "";
+}
+
+function cachedProgress() {
+  try { return JSON.parse(localStorage.getItem("fg_steam_progress") || "null"); }
+  catch { return null; }
+}
+
+function formatUnlock(unix) {
+  if (!unix) return "Locked";
+  const date = new Date(Number(unix) * 1000);
+  if (Number.isNaN(date.getTime())) return "Unlocked";
+  return `Unlocked ${date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}`;
+}
+
+function renderSteamProgress(data) {
+  const summary = $("#progressSummary");
+  const list = $("#progressList");
+  if (!summary || !list) return;
+  summary.replaceChildren();
+  const heading = document.createElement("p");
+  if (!data) heading.textContent = "Connect Steam in Settings to sync achievements. Game details on your Steam profile must be public.";
+  else {
+    const hours = Number.isFinite(Number(data.hoursPlayed)) ? `${data.hoursPlayed} hours` : "Hours not shared";
+    const percent = Number.isFinite(Number(data.percent)) ? `${data.percent}%` : "0%";
+    heading.textContent = `${hours} · ${data.unlocked || 0} of ${data.total || 0} achievements · ${percent}`;
+  }
+  summary.appendChild(heading);
+  if (data?.fetchedAt) {
+    const when = document.createElement("p");
+    when.className = "muted";
+    when.textContent = `Saved on this phone ${new Date(data.fetchedAt).toLocaleString()}. Pull down or tap Refresh to sync.`;
+    summary.appendChild(when);
+  }
+  list.replaceChildren();
+  for (const item of data?.achievements || []) {
+    const card = document.createElement("article");
+    card.className = `card progress-row${item.unlocked ? "" : " is-locked"}`;
+    if (item.icon) {
+      const image = document.createElement("img");
+      image.alt = "";
+      image.src = item.icon;
+      card.appendChild(image);
+    }
+    const copy = document.createElement("div");
+    const title = document.createElement("h3");
+    title.textContent = item.name || "Achievement";
+    const description = document.createElement("p");
+    description.textContent = item.description || "";
+    const stateLine = document.createElement("p");
+    stateLine.className = "muted";
+    stateLine.textContent = item.unlocked ? formatUnlock(item.unlockTime) : "Locked";
+    copy.append(title, description, stateLine);
+    card.appendChild(copy);
+    list.appendChild(card);
+  }
+}
+window.renderSteamProgress = renderSteamProgress;
+
+function renderSteamStatus() {
+  const node = $("#steamStatus");
+  if (!node) return;
+  const id = steamId();
+  node.textContent = id
+    ? `Connected as SteamID64 ${id}. Game details must be public or achievements stay hidden.`
+    : "Steam is not connected. After you connect, game details must be public.";
+  const link = $("#linkStatus");
+  if (link && localStorage.getItem("fg_link_token") && link.textContent === "Not paired.") {
+    link.textContent = "A pairing code is saved on this phone. Show it again if the PC still needs it.";
+  }
+}
+
+async function syncSteamProgress() {
+  const cached = cachedProgress();
+  renderSteamProgress(cached);
+  const id = steamId();
+  if (!id || !settings.api || settings.serverMode === "offline") return;
+  const summary = $("#progressSummary");
+  try {
+    const data = await requestJson(`/api/steam/progress?steamId=${encodeURIComponent(id)}`, {
+      cache: "no-store",
+      headers: serverHeaders()
+    });
+    localStorage.setItem("fg_steam_progress", JSON.stringify(data));
+    renderSteamProgress(data);
+  } catch (error) {
+    const note = document.createElement("p");
+    note.className = "muted";
+    note.textContent = error.message || "Steam sync failed. The saved copy stays on this phone.";
+    summary?.appendChild(note);
+  }
+}
+
+async function pullLinkFrame() {
+  const token = localStorage.getItem("fg_link_token") || "";
+  if (!token || !settings.api || settings.serverMode === "offline") return "";
+  const data = await requestJson(`/api/link/frame?token=${encodeURIComponent(token)}`, {
+    cache: "no-store",
+    headers: serverHeaders()
+  });
+  const capturedAt = Date.parse(data?.capturedAt || "");
+  if (!String(data?.imageDataUrl || "").startsWith("data:image")) return "";
+  if (Number.isFinite(capturedAt) && Date.now() - capturedAt > 15000) return "";
+  const preview = $("#coachPreview");
+  if (preview) {
+    preview.src = data.imageDataUrl;
+    preview.classList.remove("hidden");
+  }
+  return data.imageDataUrl;
+}
+
+function applyLinkEvents(events) {
+  const ids = foundIds();
+  let changed = false;
+  const prompts = $("#progressPrompts");
+  for (const event of events || []) {
+    if (event.kind === "mark" && event.id && !ids.has(event.id)) {
+      ids.add(event.id);
+      changed = true;
+    }
+    if (event.kind !== "prompt" || !prompts) continue;
+    const card = document.createElement("article");
+    card.className = "card";
+    const title = document.createElement("h3");
+    title.textContent = event.label || "Seen in Red Dead";
+    card.appendChild(title);
+    const note = document.createElement("p");
+    note.textContent = event.promptKind === "challenge"
+      ? "Frontier Link saw a challenge complete. It was not marked, because that line is not a map pin."
+      : "Frontier Link saw this on screen. Mark the place you just found.";
+    card.appendChild(note);
+    for (const candidate of event.candidates || []) {
+      card.appendChild(actionButton("ghost compact", `Mark ${candidate.title}`, () => {
+        const next = foundIds();
+        next.add(candidate.id);
+        localStorage.setItem("fg_found", JSON.stringify([...next]));
+        renderMap();
+        renderHiddenMap();
+        card.remove();
+      }));
+    }
+    prompts.prepend(card);
+  }
+  if (changed) {
+    localStorage.setItem("fg_found", JSON.stringify([...ids]));
+    renderMap();
+    renderHiddenMap();
+  }
+}
+
+async function pollLink() {
+  const token = localStorage.getItem("fg_link_token") || "";
+  if (!token || !settings.api || settings.serverMode === "offline") return;
+  try {
+    const status = await requestJson(`/api/link/status?token=${encodeURIComponent(token)}`, {
+      cache: "no-store",
+      headers: serverHeaders()
+    });
+    const label = $("#linkStatus");
+    if (label && status.paired) label.textContent = "Frontier Link is paired. Capture stays off until you turn it on in the helper.";
+    const since = localStorage.getItem("fg_link_since") || "0";
+    const page = await requestJson(`/api/link/events?token=${encodeURIComponent(token)}&since=${encodeURIComponent(since)}`, {
+      cache: "no-store",
+      headers: serverHeaders()
+    });
+    localStorage.setItem("fg_link_since", String(page.next ?? since));
+    applyLinkEvents(page.events || []);
+  } catch { /* pairing can expire; the next code replaces it */ }
+}
+
+let progressPull = 0;
+$("#progressView")?.addEventListener("touchstart", event => {
+  progressPull = event.touches?.[0]?.clientY || 0;
+}, { passive: true });
+$("#progressView")?.addEventListener("touchend", event => {
+  const end = event.changedTouches?.[0]?.clientY || 0;
+  const scroller = document.querySelector("main") || document.scrollingElement;
+  if ((scroller?.scrollTop || 0) <= 2 && end - progressPull > 72) syncSteamProgress();
+});
+$("#refreshProgress")?.addEventListener("click", () => syncSteamProgress());
+
+$("#connectSteam")?.addEventListener("click", async () => {
+  const status = $("#steamStatus");
+  if (!settings.api || settings.serverMode === "offline") {
+    if (status) status.textContent = "Choose Auto or Custom and save the server before connecting Steam.";
+    return;
+  }
+  const nonce = (globalThis.crypto?.randomUUID?.() || `${Date.now()}${Math.random()}`).replace(/-/g, "").slice(0, 40).padEnd(16, "0");
+  const url = `${settings.api}/auth/steam?nonce=${encodeURIComponent(nonce)}`;
+  try {
+    if (window.AndroidBridge?.openExternal) window.AndroidBridge.openExternal(url);
+    else window.open(url, "_blank", "noopener");
+  } catch {
+    window.open(url, "_blank", "noopener");
+  }
+  if (status) status.textContent = "Waiting for Steam in the browser. Game details must be public.";
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    try {
+      const data = await requestJson(`/api/steam/session?nonce=${encodeURIComponent(nonce)}`, {
+        cache: "no-store",
+        headers: serverHeaders()
+      });
+      if (data.status === "connected" && data.steamId) {
+        localStorage.setItem("fg_steam_id", data.steamId);
+        renderSteamStatus();
+        syncSteamProgress();
+        return;
+      }
+    } catch { /* the browser tab may still be signing in */ }
+  }
+  if (status) status.textContent = "Steam did not finish. Try Connect Steam again.";
+});
+
+$("#disconnectSteam")?.addEventListener("click", () => {
+  localStorage.removeItem("fg_steam_id");
+  renderSteamStatus();
+});
+
+$("#startLinkPair")?.addEventListener("click", async () => {
+  const status = $("#linkStatus");
+  if (!settings.api || settings.serverMode === "offline") {
+    if (status) status.textContent = "Save the Frontier Guide server before pairing Frontier Link.";
+    return;
+  }
+  try {
+    const data = await requestJson("/api/link/pair", {
+      method: "POST",
+      headers: serverHeaders(true),
+      body: "{}"
+    });
+    localStorage.setItem("fg_link_token", data.token);
+    localStorage.setItem("fg_link_since", "0");
+    const code = $("#linkCode");
+    if (code) {
+      code.hidden = false;
+      code.textContent = data.code;
+    }
+    const payload = `frontier-link://pair?code=${data.code}&host=${encodeURIComponent(settings.api)}`;
+    const qr = $("#linkQr");
+    if (qr && data.qrSvg) {
+      qr.src = URL.createObjectURL(new Blob([data.qrSvg], { type: "image/svg+xml" }));
+      qr.hidden = false;
+    }
+    if (status) status.textContent = `Type ${data.code} into Frontier Link, or paste ${payload}. Capture on the PC stays off until you turn it on.`;
+  } catch (error) {
+    if (status) status.textContent = error.message || "Pairing did not start.";
+  }
+});

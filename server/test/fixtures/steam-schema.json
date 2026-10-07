@@ -1,0 +1,24 @@
+{
+  "game": {
+    "gameName": "Red Dead Redemption 2",
+    "gameVersion": "1",
+    "availableGameStats": {
+      "achievements": [
+        {
+          "name": "ACH_BACK_IN_THE_MUD",
+          "displayName": "Back in the Mud",
+          "description": "Complete Chapter 1",
+          "icon": "https://steamcdn.example/back.jpg",
+          "icongray": "https://steamcdn.example/back-locked.jpg"
+        },
+        {
+          "name": "ACH_HORSEMAN",
+          "displayName": "Horseman",
+          "description": "Complete Horseman 10",
+          "icon": "https://steamcdn.example/horse.jpg",
+          "icongray": "https://steamcdn.example/horse-locked.jpg"
+        }
+      ]
+    }
+  }
+}

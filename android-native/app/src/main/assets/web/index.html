@@ -19,7 +19,7 @@
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark" aria-hidden="true"><span>FG</span></div>
-        <div class="brand-copy"><strong>Frontier Guide</strong><small id="buildLabel">RDR2 Master Companion · 1.6.1</small></div>
+        <div class="brand-copy"><strong>Frontier Guide</strong><small id="buildLabel">RDR2 Master Companion · 1.7.0</small></div>
       </div>
       <button id="onlineDot" class="status-pill" aria-label="connection status"><span></span> Offline ready</button>
     </header>
@@ -138,7 +138,7 @@
           <b id="coachState">Stopped</b>
         </div>
         <div class="coach-setup">
-          <label class="field"><span>Input</span><select id="coachSource"><option value="camera">Phone camera at the TV</option><option value="screen">Android screen capture</option></select></label>
+          <label class="field"><span>Input</span><select id="coachSource"><option value="camera">Phone camera at the TV</option><option value="screen">Android screen capture</option><option value="link">Frontier Link on this PC</option></select></label>
           <label class="field"><span>Platform</span><select id="coachPlatform"><option value="console">Console or TV</option><option value="pc">PC</option><option value="android">Android or Remote Play</option></select></label>
           <label class="field"><span>Crop</span><select id="coachCrop"><option value="full">Full frame</option><option value="center">Center</option><option value="top">Top of the frame</option></select></label>
           <label class="field"><span>Quality</span><select id="coachQuality"><option value="balanced">Balanced</option><option value="sharp">Sharper</option></select></label>
@@ -264,6 +264,13 @@
         <div id="guideResults" class="cards"></div>
       </section>
 
+      <section id="progressView" class="view panel content-panel">
+        <div class="section-head"><div><p class="eyebrow">STEAM</p><h2>Progress</h2><p class="section-sub">Red Dead Redemption 2 achievements and hours. Pull down, or tap Refresh.</p></div><button id="refreshProgress" class="send compact" type="button">Refresh</button></div>
+        <div id="progressSummary" class="progress-summary"><p>Connect Steam in Settings to sync achievements.</p></div>
+        <div id="progressList" class="cards"></div>
+        <div id="progressPrompts" class="cards"></div>
+      </section>
+
       <section id="updatesView" class="view panel content-panel">
         <div class="section-head"><div><p class="eyebrow">FRESH INTEL</p><h2>Updates & known issues</h2><p class="section-sub">Current events, changes, patch notes and reported problems.</p></div><button id="refreshUpdates" class="send compact">Refresh</button></div>
         <div class="notice"><span>●</span><p>With the AI server configured, Frontier Guide can scan current sources for Red Dead Online events, Rockstar changes, fixes, and newly reported issues.</p></div>
@@ -286,6 +293,18 @@
           <p id="contentVersion" class="muted">Installed guide data: bundled pages</p>
           <div id="settingsMsg" class="muted settings-msg"></div>
         </div>
+        <div class="settings-card" id="steamCard">
+          <div class="setup-note"><b>Steam</b><p>Connect Steam signs in with Steam OpenID and stores your SteamID64. Achievements and hours come from the Steam Web API for Red Dead Redemption 2 (app 1174180). Your Steam profile game details must be public. The Steam Web API key stays on the server as STEAM_API_KEY. Until that key is set, Progress keeps the last copy saved on this phone.</p></div>
+          <p id="steamStatus" class="muted">Steam is not connected.</p>
+          <div class="settings-actions"><button id="connectSteam" class="send" type="button">Connect Steam</button><button id="disconnectSteam" class="ghost" type="button">Disconnect</button></div>
+        </div>
+        <div class="settings-card" id="linkCard">
+          <div class="setup-note"><b>Frontier Link</b><p>The Windows helper pairs with this phone by the code below. While its capture switch is on, it captures only the Red Dead Redemption 2 window, sends a few frames a minute to Live Coach, and can mark a collectible when the on-screen pickup text names it. It does not read game memory, inject code, or touch the game process. Capture is off until you turn it on.</p></div>
+          <p id="linkStatus" class="muted">Not paired.</p>
+          <p id="linkCode" class="link-code" hidden></p>
+          <img id="linkQr" class="link-qr" alt="Pairing code" hidden />
+          <div class="settings-actions"><button id="startLinkPair" class="send" type="button">Show pairing code</button></div>
+        </div>
         <div class="privacy-card"><span>◈</span><div><b>Privacy first</b><p>Camera and screen images are sent only when you attach one to a question, or while Live Coach is watching. Spoken answers use the server voice when it has capacity; the API key stays on the server. Android asks for screen-capture permission each session.</p></div></div>
       </section>
     </main>
@@ -294,6 +313,7 @@
       <button data-view="ask" class="active"><span>✦</span>Ask</button>
       <button data-view="voice"><span>◉</span>Talk</button>
       <button data-view="guide"><span>⌖</span>Guide</button>
+      <button data-view="progress"><span>▣</span>Progress</button>
       <button data-view="updates"><span>↻</span>Updates</button>
       <button data-view="settings"><span>⚙</span>Settings</button>
     </nav>
@@ -315,7 +335,7 @@
   </dialog>
 
   <script>
-    window.FRONTIER_VERSION = "1.6.1";
+    window.FRONTIER_VERSION = "1.7.0";
     window.frontierSetVersion = function (version) {
       if (version) window.FRONTIER_VERSION = version;
       var label = document.getElementById("buildLabel");

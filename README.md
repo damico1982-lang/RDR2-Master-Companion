@@ -1,10 +1,10 @@
 # RDR2 Master Companion
 
-Frontier Guide is an unofficial, phone-first companion for Red Dead Redemption 2 and Red Dead Online. Android v1.6.1 combines a conversational guide that remembers the chat, offline legendary animals, perfect-pelt weapons, secrets, and hidden places, a spoken server voice with a device fallback, photo uploads, a Live Gameplay Coach, Android screen capture with an explicit Stop sharing control, a zoomable parchment field map, and current web-update scans.
+Frontier Guide is an unofficial, phone-first companion for Red Dead Redemption 2 and Red Dead Online. Android v1.7.0 combines a conversational guide that remembers the chat, offline legendary animals, perfect-pelt weapons, secrets, and hidden places, a spoken server voice with a device fallback, photo uploads, a Live Gameplay Coach, Android screen capture with an explicit Stop sharing control, a zoomable parchment field map, Steam progress, and current web-update scans.
 
 The same themed interface is also served as an installable web app from the live Render URL. Open `https://frontier-guide-api.onrender.com` to use it in a mobile or desktop browser. First-party web and Android clients connect automatically; the shared access key remains available for CLI or other authorized clients. Browser camera and voice modes work over HTTPS; Android screen capture remains exclusive to the APK.
 
-Current release: Android and server **1.6.1**.
+Current release: Android and server **1.7.0**.
 
 The interface uses an original black, blood-red, parchment, and weathered-leather frontier theme. No Rockstar artwork or game assets are bundled.
 
@@ -65,12 +65,17 @@ If Render assigns a different public hostname, use the exact URL displayed on th
 | `RATE_LIMIT_MAX` | Set by Blueprint | `30` |
 | `RATE_LIMIT_WINDOW_MS` | Set by Blueprint | `60000` |
 | `PORT` | Supplied by Render | Local default is `3000` |
+| `STEAM_API_KEY` | Optional. Leave unset until you create one at https://steamcommunity.com/dev/apikey | Steam Web API key used only on the server for RDR2 app 1174180. Progress stays disabled, and the phone keeps its last saved copy, until this is set |
+
+Steam achievements and hours require the Steam profile's **Game details** privacy setting to be **Public**. Connect Steam in the app uses Steam OpenID and does not need the API key. The key is what lets the server call GetPlayerAchievements, GetSchemaForGame, and GetOwnedGames.
+
+Frontier Link is the Windows helper in `frontier-link/`. It pairs with the phone by a 6-digit code, captures only the Red Dead Redemption 2 window while its switch is on, and does not read game memory or inject code.
 
 `OPENAI_BASE_URL` is an optional test/proxy override. Production defaults to `https://api.openai.com/v1`.
 
 ## Android connection settings
 
-Version 1.6.1 fills the hosted server URL in Auto mode. Custom keeps a URL you type. Offline only does not call the server. Settings remain available for diagnostics or a custom deployment:
+Version 1.7.0 fills the hosted server URL in Auto mode. Custom keeps a URL you type. Offline only does not call the server. Settings remain available for diagnostics or a custom deployment:
 
 | Android field | Value |
 |---|---|

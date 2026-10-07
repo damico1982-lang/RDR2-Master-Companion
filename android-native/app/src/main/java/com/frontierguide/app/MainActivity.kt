@@ -238,6 +238,11 @@ class MainActivity: AppCompatActivity() {
         }
         @JavascriptInterface fun showCoachOverlay(text: String) { runOnUiThread { coachOverlay.show(text) } }
         @JavascriptInterface fun hideCoachOverlay() { runOnUiThread { coachOverlay.hide() } }
+        @JavascriptInterface fun openExternal(url: String) {
+            val target = runCatching { android.net.Uri.parse(url) }.getOrNull() ?: return
+            if (target.scheme != "https") return
+            runOnUiThread { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, target)) }
+        }
         @JavascriptInterface fun speak(text:String,rate:Double,pitch:Double){
             runOnUiThread{
                 if(!speechReady){
