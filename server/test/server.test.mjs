@@ -64,7 +64,7 @@ test("GET /api/health stays public for Render and reports readiness", async () =
       model: "gpt-6-luna",
       authRequired: true,
       authorized: false,
-      version: "1.5.8",
+      version: "1.5.9",
       tts: {
         enabled: true,
         model: "gpt-4o-mini-tts",
@@ -445,8 +445,11 @@ test("android assets match the web guide shell", () => {
     "styles.css",
     "sw.js",
     "frontier-map.svg",
+    "vendor/leaflet.js",
+    "vendor/leaflet.css",
     "content/guide.json",
     "content/map.json",
+    "content/gazetteer.json",
     "content/legendaries.json",
     "content/animals.json",
     "content/secrets.json",
@@ -456,6 +459,11 @@ test("android assets match the web guide shell", () => {
     const web = readFileSync(new URL(`../public/${file}`, import.meta.url), "utf8");
     const android = readFileSync(new URL(`../../android-native/app/src/main/assets/web/${file}`, import.meta.url), "utf8");
     assert.equal(web, android, file);
+  }
+  for (const file of ["content/parchment-far.png", "content/parchment-mid.png", "content/parchment-close.png"]) {
+    const web = readFileSync(new URL(`../public/${file}`, import.meta.url));
+    const android = readFileSync(new URL(`../../android-native/app/src/main/assets/web/${file}`, import.meta.url));
+    assert.equal(Buffer.compare(web, android), 0, file);
   }
 });
 

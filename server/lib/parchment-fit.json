@@ -1,0 +1,225 @@
+{
+  "frame": "Jean Ropke CRS.Simple lat -144..0, lng 0..176",
+  "image": {
+    "width": 1760,
+    "height": 1440,
+    "pixelsPerUnit": 10.0
+  },
+  "affineRms": 8.6017,
+  "affineMax": 16.7483,
+  "diagonal": 227.4027,
+  "towns": [
+    {
+      "name": "Colter",
+      "svg": [
+        2140,
+        400
+      ],
+      "lat": -25.9919,
+      "lng": 91.0348,
+      "affineError": 7.8507,
+      "affineShareOfDiagonal": 0.0345,
+      "tpsPixelError": 0.0
+    },
+    {
+      "name": "Wapiti",
+      "svg": [
+        2720,
+        640
+      ],
+      "lat": -29.7933,
+      "lng": 118.8076,
+      "affineError": 9.7553,
+      "affineShareOfDiagonal": 0.0429,
+      "tpsPixelError": 0.0
+    },
+    {
+      "name": "Valentine",
+      "svg": [
+        2220,
+        1000
+      ],
+      "lat": -53.602,
+      "lng": 108.3971,
+      "affineError": 4.5778,
+      "affineShareOfDiagonal": 0.0201,
+      "tpsPixelError": 0.0
+    },
+    {
+      "name": "Emerald Ranch",
+      "svg": [
+        2780,
+        1220
+      ],
+      "lat": -56.8038,
+      "lng": 134.8028,
+      "affineError": 5.6527,
+      "affineShareOfDiagonal": 0.0249,
+      "tpsPixelError": 0.0
+    },
+    {
+      "name": "Strawberry",
+      "svg": [
+        1540,
+        1580
+      ],
+      "lat": -70.03,
+      "lng": 84.3196,
+      "affineError": 8.2098,
+      "affineShareOfDiagonal": 0.0361,
+      "tpsPixelError": 0.0001
+    },
+    {
+      "name": "Blackwater",
+      "svg": [
+        1680,
+        1980
+      ],
+      "lat": -82.9581,
+      "lng": 99.7447,
+      "affineError": 16.7483,
+      "affineShareOfDiagonal": 0.0737,
+      "tpsPixelError": 0.0001
+    },
+    {
+      "name": "Rhodes",
+      "svg": [
+        2860,
+        1540
+      ],
+      "lat": -83.6534,
+      "lng": 130.6434,
+      "affineError": 10.4694,
+      "affineShareOfDiagonal": 0.046,
+      "tpsPixelError": 0.0
+    },
+    {
+      "name": "Saint Denis",
+      "svg": [
+        3320,
+        1860
+      ],
+      "lat": -86.3787,
+      "lng": 152.6896,
+      "affineError": 5.9368,
+      "affineShareOfDiagonal": 0.0261,
+      "tpsPixelError": 0.0
+    },
+    {
+      "name": "Annesburg",
+      "svg": [
+        3180,
+        660
+      ],
+      "lat": -43.4814,
+      "lng": 156.745,
+      "affineError": 11.3576,
+      "affineShareOfDiagonal": 0.0499,
+      "tpsPixelError": 0.0
+    },
+    {
+      "name": "Van Horn",
+      "svg": [
+        3420,
+        980
+      ],
+      "lat": -53.7409,
+      "lng": 156.3243,
+      "affineError": 2.8299,
+      "affineShareOfDiagonal": 0.0124,
+      "tpsPixelError": 0.0001
+    },
+    {
+      "name": "Lagras",
+      "svg": [
+        3020,
+        1500
+      ],
+      "lat": -72.6373,
+      "lng": 143.8494,
+      "affineError": 1.0871,
+      "affineShareOfDiagonal": 0.0048,
+      "tpsPixelError": 0.0
+    },
+    {
+      "name": "Armadillo",
+      "svg": [
+        1160,
+        2300
+      ],
+      "lat": -104.3897,
+      "lng": 53.4547,
+      "affineError": 9.5142,
+      "affineShareOfDiagonal": 0.0418,
+      "tpsPixelError": 0.0
+    },
+    {
+      "name": "Tumbleweed",
+      "svg": [
+        420,
+        2380
+      ],
+      "lat": -109.3272,
+      "lng": 26.8317,
+      "affineError": 5.5403,
+      "affineShareOfDiagonal": 0.0244,
+      "tpsPixelError": 0.0
+    }
+  ],
+  "coast": [
+    {
+      "lng": 80.456,
+      "lat": -58.933,
+      "affineError": 9.519
+    },
+    {
+      "lng": 79.7,
+      "lat": -65.035,
+      "affineError": 7.054
+    },
+    {
+      "lng": 77.818,
+      "lat": -68.294,
+      "affineError": 3.784
+    },
+    {
+      "lng": 68.658,
+      "lat": -72.0,
+      "affineError": 6.823
+    },
+    {
+      "lng": 69.825,
+      "lat": -78.615,
+      "affineError": 5.671
+    },
+    {
+      "lng": 75.355,
+      "lat": -82.61,
+      "affineError": 2.835
+    },
+    {
+      "lng": 81.873,
+      "lat": -82.612,
+      "affineError": 1.418
+    },
+    {
+      "lng": 83.903,
+      "lat": -95.236,
+      "affineError": 11.721
+    },
+    {
+      "lng": 89.389,
+      "lat": -79.878,
+      "affineError": 9.129
+    }
+  ],
+  "water": [
+    {
+      "name": "Lannahechee River",
+      "lng": 170.01,
+      "lat": -75.422
+    }
+  ],
+  "controlCount": 23,
+  "tpsTownPixelRms": 0.0
+}

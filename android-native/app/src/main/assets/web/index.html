@@ -8,6 +8,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="vendor/leaflet.css" />
   <title>Frontier Guide — RDR2 Companion</title>
 </head>
 <body>
@@ -18,7 +19,7 @@
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark" aria-hidden="true"><span>FG</span></div>
-        <div class="brand-copy"><strong>Frontier Guide</strong><small id="buildLabel">RDR2 Master Companion · 1.5.8</small></div>
+        <div class="brand-copy"><strong>Frontier Guide</strong><small id="buildLabel">RDR2 Master Companion · 1.5.9</small></div>
       </div>
       <button id="onlineDot" class="status-pill" aria-label="connection status"><span></span> Offline ready</button>
     </header>
@@ -192,22 +193,23 @@
       </section>
 
       <section id="mapView" class="view panel content-panel map-panel">
-        <div class="section-head map-section-head"><div><p class="eyebrow">FRONTIER FIELD MAP</p><h2>Treasure &amp; field pins</h2></div></div>
-        <div class="map-frame is-expanded">
-          <div class="map-chrome">
-            <button type="button" class="ghost compact map-filter-toggle" aria-expanded="false" aria-controls="mapTags">Filters</button>
-            <button type="button" class="ghost compact map-orient" aria-pressed="false">Landscape</button>
+        <div class="map-frame">
+          <div class="field-map" id="fieldMap" data-detail="far" data-scale="1" role="application" aria-label="Original parchment map with guide markers"></div>
+          <div class="map-controls map-controls-top">
+            <button type="button" class="map-round map-search-toggle" aria-label="Search the map" aria-expanded="false">⌕</button>
+            <button type="button" class="map-round map-layers-toggle" aria-label="Map layers" aria-expanded="false" aria-controls="mapTags">☰</button>
+          </div>
+          <form class="map-search-pop" hidden>
             <input class="map-search-input" type="search" placeholder="Search a place" aria-label="Search the map" enterkeyhint="search" autocomplete="off" />
-            <button type="button" class="ghost compact map-expand" aria-pressed="true">Close</button>
+          </form>
+          <div class="map-controls map-controls-zoom">
+            <button type="button" class="map-round map-zoom-in" aria-label="Zoom in">+</button>
+            <button type="button" class="map-round map-zoom-out" aria-label="Zoom out">−</button>
+            <button type="button" class="map-round map-recenter" aria-label="Show the whole map">⌖</button>
           </div>
-          <div id="mapTags" class="tags map-drawer"></div>
-          <div class="field-map" id="fieldMap" data-detail="far" data-scale="1" role="img" aria-label="Original parchment map with guide markers">
-            <div class="map-art"></div>
-            <div id="mapMarkers" class="map-markers"></div>
-          </div>
+          <div id="mapTags" class="map-sheet" hidden></div>
         </div>
-        <p class="map-note">Original parchment drawn for this guide, not Rockstar’s, IGN’s, or GTABase’s map. The whole sheet is the default view. State names read from far away, counties at a middle zoom, and towns up close. Search flies to a place. Markers fade in as you zoom and stay in Filters.</p>
-        <article id="mapDetail" class="card map-detail"><h3>Select a marker</h3><p>Choose a layer above, then tap a marker. Legendary and Secrets are their own layers.</p></article>
+        <article id="mapDetail" class="card map-detail map-sheet-card"><h3>Select a marker</h3><p>Tap a marker. The layers button turns categories on and off.</p></article>
       </section>
 
       <section id="legendaryView" class="view panel content-panel">
@@ -235,23 +237,24 @@
       </section>
 
       <section id="hiddenView" class="view panel content-panel map-panel">
-        <div class="section-head map-section-head"><div><p class="eyebrow">OFF THE ROAD</p><h2>Hidden Places</h2></div></div>
-        <div class="map-frame is-expanded">
-          <div class="map-chrome">
-            <button type="button" class="ghost compact map-filter-toggle" aria-expanded="false" aria-controls="hiddenTags">Filters</button>
-            <button type="button" class="ghost compact map-orient" aria-pressed="false">Landscape</button>
+        <div class="map-frame">
+          <div class="field-map" id="hiddenMap" data-detail="far" data-scale="1" role="application" aria-label="Original parchment map of hidden caves, mines, and mountain spots"></div>
+          <div class="map-controls map-controls-top">
+            <button type="button" class="map-round map-search-toggle" aria-label="Search hidden places" aria-expanded="false">⌕</button>
+            <button type="button" class="map-round map-layers-toggle" aria-label="Hidden place layers" aria-expanded="false" aria-controls="hiddenTags">☰</button>
+          </div>
+          <form class="map-search-pop" hidden>
             <input class="map-search-input" type="search" placeholder="Search a place" aria-label="Search hidden places" enterkeyhint="search" autocomplete="off" />
-            <button type="button" class="ghost compact map-expand" aria-pressed="true">Close</button>
+          </form>
+          <div class="map-controls map-controls-zoom">
+            <button type="button" class="map-round map-zoom-in" aria-label="Zoom in">+</button>
+            <button type="button" class="map-round map-zoom-out" aria-label="Zoom out">−</button>
+            <button type="button" class="map-round map-recenter" aria-label="Show the whole map">⌖</button>
           </div>
-          <div id="hiddenTags" class="tags map-drawer"></div>
-          <div class="field-map" id="hiddenMap" data-detail="far" data-scale="1" role="img" aria-label="Original parchment map of hidden caves, mines, and mountain spots">
-            <div class="map-art"></div>
-            <div id="hiddenMarkers" class="map-markers"></div>
-          </div>
+          <div id="hiddenTags" class="map-sheet" hidden></div>
         </div>
-        <p class="map-note">Same original parchment as the Field Map. Search flies to a hidden place. Markers fade in as you zoom. The list under the map matches the pins.</p>
-        <article id="hiddenDetail" class="card map-detail"><h3>Select a hidden place</h3><p>Choose Cave, Waterfall, Mine, Underground, or Mountain, then tap a marker or a name in the list.</p></article>
-        <div id="hiddenList" class="cards hidden-list"></div>
+        <article id="hiddenDetail" class="card map-detail map-sheet-card"><h3>Select a hidden place</h3><p>Open layers, then tap a marker or a name.</p></article>
+        <div id="hiddenList" class="cards hidden-list" hidden></div>
       </section>
 
       <section id="guideView" class="view panel content-panel">
@@ -312,7 +315,7 @@
   </dialog>
 
   <script>
-    window.FRONTIER_VERSION = "1.5.8";
+    window.FRONTIER_VERSION = "1.5.9";
     window.frontierSetVersion = function (version) {
       if (version) window.FRONTIER_VERSION = version;
       var label = document.getElementById("buildLabel");
@@ -351,6 +354,7 @@
       });
     });
   </script>
+  <script src="vendor/leaflet.js"></script>
   <script src="frontier-session.js"></script>
   <script src="app.js" onerror="frontierReport('app.js did not load. The page buttons have nothing to run.')"></script>
 </body>

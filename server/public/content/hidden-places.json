@@ -9,11 +9,8 @@
     "enter": "Leave the horse, walk to the waterfall at the north end of the pool, and pass through the water into the cave. Deeper in, a slope on the right drops to a pit; a small hole in that wall leads toward the Poisonous Trail chamber. Keep a lantern and a manual save.",
     "contents": "A polluted cave stream, old camp remains, and cave paintings. The Poisonous Trail treasure (four gold bars) is in the hidden tunnel if you have followed that map chain from Cairn Lake. After all 20 dreamcatchers, the Ancient Arrowhead is in the eye of a bison painting in a side chamber. The pool itself is poisoned by the mine upstream.",
     "confirmed": true,
-    "x": 80.87,
-    "y": 39.64,
-    "gameX": 2380,
-    "gameY": 220,
-    "county": "Roanoke Ridge"
+    "approximate": true,
+    "accuracyNote": "No exact published coordinate. Shown in the list only."
   },
   {
     "id": "strange-statues-cave",
@@ -25,11 +22,13 @@
     "enter": "Ride the northern road through the Grizzlies East. On the north side, go up the rocks to a narrow cave mouth. The painting that hints the solution is a separate stop at Window Rock.",
     "contents": "Seven statues around a winged figure. Press the statues whose finger counts are the prime numbers 2, 3, 5, and 7. The one-armed statue's missing arm is on the cave floor. The panel in the center statue holds three gold bars. Rear buttons reset a mistake.",
     "confirmed": true,
-    "x": 71.11,
-    "y": 17.12,
-    "gameX": 1250,
-    "gameY": 2050,
-    "county": "Grizzlies East"
+    "x": 70.8468,
+    "y": 23.4241,
+    "lat": -33.7307,
+    "lng": 124.6904,
+    "sourceUrl": "https://github.com/jeanropke/RDOMap/blob/master/data/discoverables.json",
+    "sourceLat": -33.7307,
+    "sourceLng": 124.6904
   },
   {
     "id": "mount-shann-cave",
@@ -41,11 +40,13 @@
     "enter": "Climb Mount Shann. The cave is near the summit, separate from the stone sundial used by the Landmarks of Riches treasure.",
     "contents": "The skeleton of a giant. This is a skeleton, not a living Bigfoot. No second creature is confirmed in this cave.",
     "confirmed": true,
-    "x": 35.69,
-    "y": 47.83,
-    "gameX": -2350,
-    "gameY": 80,
-    "county": "Big Valley"
+    "x": 46.3976,
+    "y": 44.1042,
+    "lat": -63.51,
+    "lng": 81.6597,
+    "sourceUrl": "https://github.com/jeanropke/RDOMap/blob/master/data/discoverables.json",
+    "sourceLat": -63.51,
+    "sourceLng": 81.6597
   },
   {
     "id": "beaver-hollow",
@@ -57,11 +58,13 @@
     "enter": "Approach from the roads south of the site. The Murfree Brood use the caves and will shoot on sight before the gang moves here.",
     "contents": "A large cave network and a hostile camp. In Chapter 6 it becomes the Van der Linde camp. A Sparrow's Egg Orchid grows in the area. Do not expect a peaceful loot room.",
     "confirmed": true,
-    "x": 79.16,
-    "y": 23.5,
-    "gameX": 2352,
-    "gameY": 1358,
-    "county": "Roanoke Ridge"
+    "x": 83.7286,
+    "y": 29.0874,
+    "lat": -41.8859,
+    "lng": 147.3624,
+    "sourceUrl": "https://github.com/jeanropke/RDOMap/blob/master/data/discoverables.json",
+    "sourceLat": -41.8859,
+    "sourceLng": 147.3624
   },
   {
     "id": "cochinay",
@@ -73,11 +76,13 @@
     "enter": "This cave is the setting of the epilogue mission American Venom. This guide does not claim a free-roam treasure route into it before that mission.",
     "contents": "The cave camp used for the story's last mission. The reward is the mission itself, not a listed lockbox.",
     "confirmed": true,
-    "x": 35.54,
-    "y": 70.96,
-    "gameX": -2300,
-    "gameY": -1800,
-    "county": "Tall Trees"
+    "x": 42.4344,
+    "y": 55.1289,
+    "lat": -79.3856,
+    "lng": 74.6846,
+    "sourceUrl": "https://github.com/jeanropke/RDOMap/blob/master/data/discoverables.json",
+    "sourceLat": -79.3856,
+    "sourceLng": 74.6846
   },
   {
     "id": "elysian-mine",
@@ -89,11 +94,13 @@
     "enter": "Ride north from the pool along the west bank until you reach the boarded mine and the dead yellow ground.",
     "contents": "The closed mine that leaks into Elysian Pool. It explains the poisoned water. It is a landmark, not a treasure dungeon, and this guide does not claim an interior full of loot.",
     "confirmed": true,
-    "x": 82.11,
-    "y": 36.57,
-    "gameX": 2450,
-    "gameY": 420,
-    "county": "Roanoke Ridge"
+    "x": 85.4709,
+    "y": 36.926,
+    "lat": -53.1734,
+    "lng": 150.4288,
+    "sourceUrl": "https://github.com/jeanropke/RDOMap/blob/master/data/discoverables.json",
+    "sourceLat": -53.1734,
+    "sourceLng": 150.4288
   },
   {
     "id": "gaptooth-breach",
@@ -105,11 +112,13 @@
     "enter": "New Austin is locked until the epilogue in a normal playthrough. Ride to Gaptooth Breach and expect a hostile gang camp in the mine.",
     "contents": "A mine used as a Del Lobo hideout. Loot is whatever the camp is carrying. It is not a storyless gold vault.",
     "confirmed": true,
-    "x": 6.32,
-    "y": 86.28,
-    "gameX": -6001,
-    "gameY": -3319,
-    "county": "Gaptooth Ridge"
+    "x": 11.0447,
+    "y": 79.5638,
+    "lat": -114.5719,
+    "lng": 19.4387,
+    "sourceUrl": "https://github.com/jeanropke/RDOMap/blob/master/data/discoverables.json",
+    "sourceLat": -114.5719,
+    "sourceLng": 19.4387
   },
   {
     "id": "luckys-cabin",
@@ -121,11 +130,13 @@
     "enter": "Find all three nighttime murder scenes first (10 p.m. to 5 a.m.), then open the basement doors at Lucky's Cabin. Inspect the knife. The full steps are on the Secrets page under American Dreams.",
     "contents": "The serial killer's basement, letters, and the fight with Edmund Lowry Jr. About $20 if you stop him when he attacks the Valentine sheriff.",
     "confirmed": true,
-    "x": 54.4,
-    "y": 39.79,
-    "gameX": -500,
-    "gameY": 400,
-    "county": "Heartlands"
+    "x": 57.7422,
+    "y": 38.2144,
+    "lat": -55.0288,
+    "lng": 101.6263,
+    "sourceUrl": "https://github.com/jeanropke/RDOMap/blob/master/data/discoverables.json",
+    "sourceLat": -55.0288,
+    "sourceLng": 101.6263
   },
   {
     "id": "valentine-doctor",
@@ -137,11 +148,13 @@
     "enter": "During Chapter 2, start the back-room robbery at the doctor's office and follow it downstairs.",
     "contents": "A hidden cellar and a wounded man the doctor is keeping there. The payoff is the robbery, not a separate treasure map.",
     "confirmed": true,
-    "x": 57.34,
-    "y": 33.76,
-    "gameX": -278,
-    "gameY": 807,
-    "county": "Heartlands"
+    "x": 60.6942,
+    "y": 35.4997,
+    "lat": -51.1196,
+    "lng": 106.8218,
+    "sourceUrl": "https://github.com/jeanropke/RDOMap/blob/master/data/shops.json",
+    "sourceLat": -51.1196,
+    "sourceLng": 106.8218
   },
   {
     "id": "rhodes-gunsmith",
@@ -153,11 +166,13 @@
     "enter": "Once Rhodes is part of your chapter, rob the gunsmith and open the locked cellar under the shop.",
     "contents": "A captive kept in the basement. The scene is the robbery discovery. This guide does not add a separate cash amount.",
     "confirmed": true,
-    "x": 73.5,
-    "y": 52.23,
-    "gameX": 1326,
-    "gameY": -1324,
-    "county": "Scarlett Meadows"
+    "x": 74.8928,
+    "y": 58.4252,
+    "lat": -84.1323,
+    "lng": 131.8113,
+    "sourceUrl": "https://github.com/jeanropke/RDOMap/blob/master/data/shops.json",
+    "sourceLat": -84.1323,
+    "sourceLng": 131.8113
   },
   {
     "id": "viking-tomb",
@@ -169,11 +184,13 @@
     "enter": "Ride the coast northeast of Annesburg and search the rocks for the burial mound. Climb in and inspect the remains.",
     "contents": "A Viking helmet and the Viking Hatchet.",
     "confirmed": true,
-    "x": 87.2,
-    "y": 20.65,
-    "gameX": 3380,
-    "gameY": 1480,
-    "county": "Roanoke Ridge"
+    "x": 84.5913,
+    "y": 26.5303,
+    "lat": -38.2037,
+    "lng": 148.8807,
+    "sourceUrl": "https://github.com/the0neWhoKnocks/red-dead-redemption-2-map/blob/master/public/markers.default.json",
+    "sourceLat": -50.7513,
+    "sourceLng": 199.091
   },
   {
     "id": "window-rock",
@@ -185,11 +202,15 @@
     "enter": "Ride north of Cumberland Forest to Window Rock and walk under the overhang.",
     "contents": "A rock painting that hints the Strange Statues puzzle. Inspect it so the drawing is added to the journal. The gold bars are in the statue cave, not here.",
     "confirmed": true,
-    "x": 65.74,
-    "y": 18.53,
-    "gameX": 500,
-    "gameY": 2000,
-    "county": "Grizzlies East"
+    "x": 61.734,
+    "y": 26.6965,
+    "lat": -38.4429,
+    "lng": 108.6519,
+    "sourceUrl": "https://github.com/jeanropke/RDOMap/blob/master/data/discoverables.json",
+    "sourceLat": -38.4429,
+    "sourceLng": 108.6519,
+    "approximate": true,
+    "accuracyNote": "Approximate. This is the published strange-statues painting, which the guide associates with Window Rock, not a separate overhang survey."
   },
   {
     "id": "granite-pass",
@@ -201,11 +222,8 @@
     "enter": "Find the wrecked train in the ravine and climb through the tilted cars to the upright car lodged below the cliff. Save before the climb. A fall can kill you.",
     "contents": "Two gold bars in the upright car. Story Mode only.",
     "confirmed": true,
-    "x": 62.13,
-    "y": 22.41,
-    "gameX": 80,
-    "gameY": 1750,
-    "county": "Cumberland Forest"
+    "approximate": true,
+    "accuracyNote": "No exact published coordinate. Shown in the list only."
   },
   {
     "id": "high-stakes-ledge",
@@ -217,11 +235,15 @@
     "enter": "This is the last climb of the High Stakes treasure, after the Cumberland Falls and Barrow Lagoon maps. Follow the low overhang. Save first.",
     "contents": "Three gold bars at the end of that treasure chain. The route is the hidden part; there is no separate cave door.",
     "confirmed": true,
-    "x": 66.64,
-    "y": 23.09,
-    "gameX": 700,
-    "gameY": 1650,
-    "county": "Cumberland Forest"
+    "x": 66.4244,
+    "y": 28.4172,
+    "lat": -40.9207,
+    "lng": 116.9069,
+    "sourceUrl": "https://pastebin.com/raw/YRdi3fRK",
+    "sourceLat": 361.913,
+    "sourceLng": 1461.297,
+    "approximate": true,
+    "accuracyNote": "Approximate. This is the published Fort Wallace coordinate. The cliff ledge is not a separate point in the source file."
   },
   {
     "id": "calibans-seat",
@@ -233,11 +255,8 @@
     "enter": "Climb the spire as part of the Jack Hall Gang treasure, after the first map from Maximo near Flatneck Station.",
     "contents": "The next Jack Hall treasure map, stashed in the rocks. The gold bars are later, on the island in O'Creagh's Run.",
     "confirmed": true,
-    "x": 76.29,
-    "y": 15.91,
-    "gameX": 1900,
-    "gameY": 2050,
-    "county": "Grizzlies East"
+    "approximate": true,
+    "accuracyNote": "No exact published coordinate. Shown in the list only."
   },
   {
     "id": "the-loft",
@@ -249,11 +268,13 @@
     "enter": "Climb the trails north of Annesburg to the house on the cliff. It is easy to miss from the road.",
     "contents": "A sniper's nest. The unique gun here is a Rolling Block Rifle.",
     "confirmed": true,
-    "x": 81.89,
-    "y": 18.62,
-    "gameX": 2800,
-    "gameY": 1650,
-    "county": "Roanoke Ridge"
+    "x": 80.2573,
+    "y": 22.8257,
+    "lat": -32.869,
+    "lng": 141.2529,
+    "sourceUrl": "https://github.com/jeanropke/RDOMap/blob/master/data/discoverables.json",
+    "sourceLat": -32.869,
+    "sourceLng": 141.2529
   },
   {
     "id": "meteor-house",
@@ -265,11 +286,13 @@
     "enter": "Follow the tracks west of Brandywine Drop and go into the smashed house.",
     "contents": "A meteorite in the smoking hole in the floor, and the remains of the people who lived there. Paired with the crater to the northwest. A third meteorite is not confirmed.",
     "confirmed": true,
-    "x": 80.51,
-    "y": 16.42,
-    "gameX": 2500,
-    "gameY": 1900,
-    "county": "Roanoke Ridge"
+    "x": 85.1203,
+    "y": 22.5669,
+    "lat": -32.4964,
+    "lng": 149.8117,
+    "sourceUrl": "https://github.com/jeanropke/RDOMap/blob/master/data/discoverables.json",
+    "sourceLat": -32.4964,
+    "sourceLng": 149.8117
   },
   {
     "id": "meteor-crater",
@@ -281,11 +304,13 @@
     "enter": "From Meteor House, cross the railroad tracks toward the northwest and look for the cleared crater in the trees.",
     "contents": "The second meteorite, in the center of the crater. The satchel can read 2 of 3. Nobody has confirmed a third piece.",
     "confirmed": true,
-    "x": 79.4,
-    "y": 14.48,
-    "gameX": 2300,
-    "gameY": 2100,
-    "county": "Roanoke Ridge"
+    "x": 83.4398,
+    "y": 21.8445,
+    "lat": -31.4561,
+    "lng": 146.854,
+    "sourceUrl": "https://github.com/jeanropke/RDOMap/blob/master/data/discoverables.json",
+    "sourceLat": -31.4561,
+    "sourceLng": 146.854
   },
   {
     "id": "whinyard-strait",
@@ -297,11 +322,8 @@
     "enter": "Ride the high western Grizzlies near Lake Isabella and take the narrow frozen cut instead of the main road.",
     "contents": "A hard mountain passage. No unique loot is confirmed for this entry; it is here because the cut is easy to miss.",
     "confirmed": true,
-    "x": 45.35,
-    "y": 25.66,
-    "gameX": -2000,
-    "gameY": 1600,
-    "county": "Grizzlies West"
+    "approximate": true,
+    "accuracyNote": "No exact published coordinate. Shown in the list only."
   },
   {
     "id": "spider-gorge",
@@ -313,10 +335,7 @@
     "enter": "Find the named canyon in Ambarino and walk the tight passage. It is not a cave door.",
     "contents": "The canyon itself. No unique reward is confirmed in this guide, so none is listed.",
     "confirmed": true,
-    "x": 57.54,
-    "y": 19.2,
-    "gameX": -800,
-    "gameY": 2000,
-    "county": "Grizzlies West"
+    "approximate": true,
+    "accuracyNote": "No exact published coordinate. Shown in the list only."
   }
 ]

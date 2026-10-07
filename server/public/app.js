@@ -54,6 +54,7 @@ const state = {
   coachBusy: false,
   mapLocations: [],
   baseMap: [],
+  gazetteer: [],
   disabledMapCategories: new Set(),
   selectedMapId: null,
   legendaries: [],
@@ -178,7 +179,7 @@ function setView(view) {
 }
 
 function syncMapScrollLock() {
-  const open = Boolean(document.querySelector("#mapView.active .map-frame.is-expanded, #hiddenView.active .map-frame.is-expanded"));
+  const open = Boolean(document.querySelector("#mapView.active, #hiddenView.active"));
   document.documentElement.classList.toggle("map-open", open);
 }
 
@@ -1121,7 +1122,7 @@ function renderHiddenTags() {
     entry.className = "legend-item";
     entry.textContent = `${item.mapNumber}  ${item.name}`;
     entry.onclick = () => {
-      $("#hiddenMap")?.frontierZoomTo?.(3.6, item.x, item.y);
+      if (Number.isFinite(item.lat) && Number.isFinite(item.lng)) $("#hiddenMap")?.frontierZoomTo?.(3.6, item.x, item.y);
       showHiddenDetail(item);
     };
     legend.appendChild(entry);
@@ -1140,9 +1141,13 @@ function showHiddenDetail(item) {
   addField(detail, "Region", `${item.region}. ${item.landmark}.`);
   addField(detail, "How to enter", item.enter);
   addField(detail, "What's there", item.contents);
-  addField(detail, "Grid", `Schematic ${item.x}, ${item.y}. X increases east and Y increases south.`);
+  if (item.approximate || item.accuracyNote) addField(detail, "Accuracy", item.accuracyNote || "Approximate. No exact published coordinate.");
+  else if (Number.isFinite(item.lat)) addField(detail, "Map frame", `${Number(item.lat).toFixed(4)}, ${Number(item.lng).toFixed(4)}.`);
+  else addField(detail, "Map", "Not pinned. No exact published coordinate.");
   detail.appendChild(foundButton(item.id));
   detail.classList.add("is-open");
+  const sheet = detail.closest(".map-panel")?.querySelector(".map-sheet");
+  if (sheet) sheet.hidden = true;
   detail.appendChild(actionButton("ghost compact map-detail-close", "Close card", () => {
     state.selectedHiddenId = null;
     detail.classList.remove("is-open");
@@ -1154,7 +1159,7 @@ function showHiddenDetail(item) {
 function renderHiddenMap() {
   const items = hiddenItems();
   assignMapNumbers(items);
-  paintMarkers($("#hiddenMarkers"), items, state.selectedHiddenId, showHiddenDetail);
+  paintLeaflet($("#hiddenMap"), items.filter(item => Number.isFinite(item.lat) && Number.isFinite(item.lng)), state.selectedHiddenId, showHiddenDetail);
 }
 
 function renderHiddenList() {
@@ -1645,43 +1650,42 @@ async function loadJson(path) {
 
 async function loadMap() {
   state.baseMap = await loadJson("content/map.json");
+  try {
+    const response = await fetch("content/gazetteer.json");
+    state.gazetteer = response.ok ? await response.json() : [];
+    if (!Array.isArray(state.gazetteer)) state.gazetteer = [];
+  } catch {
+    state.gazetteer = [];
+  }
   rebuildMap();
 }
 
 function rebuildMap() {
-  const legendaryMarkers = state.legendaries
-    .filter(item => Number.isFinite(item.x) && Number.isFinite(item.y))
-    .map(item => ({
-      id: `leg-${item.id}`,
-      category: "Legendary",
-      mode: item.mode,
-      title: item.name,
-      region: item.region,
-      x: item.x,
-      y: item.y,
-      directions: `${item.landmark}. ${item.conditions}`,
-      note: item.unlock,
-      linkView: "legendary",
-      linkId: item.id,
-      linkLabel: "Open animal page"
-    }));
   const secretMarkers = state.secrets.flatMap(item => (item.markers || [])
-    .filter(marker => Number.isFinite(marker.x) && Number.isFinite(marker.y))
+    .filter(marker => Number.isFinite(marker.lat) && Number.isFinite(marker.lng))
+    .filter(marker => !state.baseMap.some(pin => pin.id === marker.id))
     .map(marker => ({
       id: marker.id,
       category: "Secrets",
       mode: item.mode,
       title: marker.title,
       region: marker.region,
+      lat: marker.lat,
+      lng: marker.lng,
       x: marker.x,
       y: marker.y,
+      sourceUrl: marker.sourceUrl,
+      sourceLat: marker.sourceLat,
+      sourceLng: marker.sourceLng,
+      approximate: marker.approximate,
+      accuracyNote: marker.accuracyNote,
       directions: marker.directions,
       note: marker.note,
       linkView: "secrets",
       linkId: item.id,
       linkLabel: "Open secret"
     })));
-  state.mapLocations = [...state.baseMap, ...legendaryMarkers, ...secretMarkers];
+  state.mapLocations = [...state.baseMap, ...secretMarkers];
   renderMapTags();
   renderMap();
 }
@@ -1778,14 +1782,23 @@ function showMapDetail(item) {
   }
   actions.appendChild(foundButton(item.id));
   const grid = document.createElement("p");
-  grid.textContent = `Schematic grid ${item.x}, ${item.y}. X increases east and Y increases south. This is a companion coordinate, not Rockstar's map.`;
+  grid.textContent = Number.isFinite(item.lat) && Number.isFinite(item.lng)
+    ? `Map frame ${Number(item.lat).toFixed(4)}, ${Number(item.lng).toFixed(4)}.`
+    : "This place is not pinned.";
+  const warn = document.createElement("p");
+  if (item.approximate || item.accuracyNote) {
+    warn.className = "approx-note";
+    warn.textContent = item.accuracyNote || "Approximate. The card is using the nearest published point.";
+  }
   actions.appendChild(actionButton("ghost compact map-detail-close", "Close card", () => {
     state.selectedMapId = null;
     detail.classList.remove("is-open");
     renderMap();
   }));
   detail.classList.add("is-open");
-  detail.append(heading, body, grid, actions);
+  const frame = detail.closest(".map-panel")?.querySelector(".map-sheet");
+  if (frame) frame.hidden = true;
+  detail.append(heading, body, grid, ...(warn.textContent ? [warn] : []), actions);
 }
 
 function assignMapNumbers(items) {
@@ -1800,7 +1813,7 @@ function renderMap() {
     return categoryMatch && modeMatches(item);
   });
   assignMapNumbers(items);
-  paintMarkers($("#mapMarkers"), items, state.selectedMapId, showMapDetail);
+  paintLeaflet($("#fieldMap"), items.filter(item => Number.isFinite(item.lat) && Number.isFinite(item.lng)), state.selectedMapId, showMapDetail);
 }
 
 function setConnectionState(kind, label) {
@@ -2090,126 +2103,6 @@ function markerGlyph(name) {
   return svg;
 }
 
-function dominantCategory(items) {
-  const counts = new Map();
-  for (const item of items) counts.set(item.category, (counts.get(item.category) || 0) + 1);
-  return [...counts.entries()].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))[0][0];
-}
-
-function spreadPins(items, scale = 1) {
-  const close = scale >= 3.4;
-  const gap = close ? 1.15 : 3;
-  const base = close ? 1.25 : 3.2;
-  const step = close ? 0.28 : 0.45;
-  const placed = [];
-  return items.map(item => {
-    let x = Number(item.x);
-    let y = Number(item.y);
-    let spin = 0;
-    while (placed.some(pin => Math.abs(pin.x - x) < gap && Math.abs(pin.y - y) < gap) && spin < 6) {
-      const angle = spin * 1.15;
-      const radius = base + spin * step;
-      x = Number(item.x) + Math.cos(angle) * radius;
-      y = Number(item.y) + Math.sin(angle) * radius;
-      spin += 1;
-    }
-    const point = { x: Math.max(2, Math.min(98, x)), y: Math.max(2, Math.min(98, y)) };
-    placed.push(point);
-    return { item, x: point.x, y: point.y };
-  });
-}
-
-function groupPins(items, scale, mapW, mapH) {
-  const width = Math.max(1, mapW * scale);
-  const height = Math.max(1, mapH * scale);
-  const limit = scale < 1.8 ? 10 : scale < 3.6 ? 14 : 18;
-  const groups = [];
-  for (const item of items) {
-    const x = Number(item.x);
-    const y = Number(item.y);
-    let match = null;
-    for (const group of groups) {
-      const dx = (group.x - x) / 100 * width;
-      const dy = (group.y - y) / 100 * height;
-      if (Math.hypot(dx, dy) < limit) {
-        match = group;
-        break;
-      }
-    }
-    if (!match) {
-      groups.push({ item, items: [item], x, y, cluster: false });
-    } else {
-      match.items.push(item);
-      const count = match.items.length;
-      let sumX = 0;
-      let sumY = 0;
-      for (const entry of match.items) {
-        sumX += Number(entry.x);
-        sumY += Number(entry.y);
-      }
-      match.x = sumX / count;
-      match.y = sumY / count;
-      match.item = null;
-    }
-  }
-  for (const group of groups) {
-    group.cluster = group.items.length > 1;
-    if (group.cluster) group.item = null;
-  }
-  return groups;
-}
-
-function paintMarkers(layer, items, activeId, onSelect) {
-  if (!layer) return;
-  const viewport = layer.closest(".field-map");
-  const scale = mapViewportScale(viewport);
-  const stage = viewport?.querySelector(".map-stage");
-  const mapW = stage?.clientWidth || viewport?.clientWidth || 1;
-  const mapH = stage?.clientHeight || viewport?.clientHeight || 1;
-  const found = foundIds();
-  layer.replaceChildren();
-  for (const group of groupPins(items, scale, mapW, mapH)) {
-    const marker = document.createElement("button");
-    marker.type = "button";
-    marker.style.left = `${group.x}%`;
-    marker.style.top = `${group.y}%`;
-    if (group.cluster) {
-      const style = styleFor(dominantCategory(group.items));
-      const kinds = [...new Set(group.items.flatMap(item => markerKind(item).trim().split(/\s+/)).filter(Boolean))];
-      marker.className = `map-marker cluster ${kinds.join(" ")}`.trim();
-      marker.style.background = style.color;
-      marker.style.color = style.ink;
-      const label = document.createElement("span");
-      label.textContent = String(group.items.length);
-      marker.appendChild(label);
-      marker.title = `${group.items.length} places`;
-      marker.setAttribute("aria-label", `${group.items.length} places. Zoom in.`);
-      marker.onclick = event => {
-        event.stopPropagation();
-        if (viewport && viewport.frontierZoomTo) viewport.frontierZoomTo(Math.min(6.2, Math.max(scale * 2.2, 2.5)), group.x, group.y);
-      };
-    } else {
-      const item = group.item;
-      const style = styleFor(item.category);
-      const active = activeId === item.id ? " active" : "";
-      const foundClass = found.has(item.id) ? " found" : "";
-      marker.className = `map-marker${markerKind(item)}${active}${foundClass}`;
-      marker.style.background = style.color;
-      marker.style.color = style.ink;
-      marker.append(markerGlyph(style.glyph));
-      const name = item.title || item.name;
-      marker.title = name;
-      marker.setAttribute("aria-label", name);
-      marker.onclick = event => {
-        event.stopPropagation();
-        onSelect(item);
-      };
-    }
-    marker.style.transform = `translate(-50%, -50%) scale(${1 / scale})`;
-    layer.appendChild(marker);
-  }
-}
-
 function foundIds() {
   try { return new Set(JSON.parse(localStorage.getItem("fg_found") || "[]")); }
   catch { return new Set(); }
@@ -2228,393 +2121,202 @@ function foundButton(id) {
   return button;
 }
 
-function reconcileModeSelection() {
-  const selected = state.mapLocations.find(entry => entry.id === state.selectedMapId);
-  if (state.selectedMapId && (!selected || !modeMatches(selected))) {
-    state.selectedMapId = null;
-    const detail = $("#mapDetail");
-    if (detail) {
-      detail.replaceChildren();
-      const title = document.createElement("h3");
-      title.textContent = "Select a marker";
-      const body = document.createElement("p");
-      body.textContent = "That pin does not match this play mode. Choose a marker that does.";
-      detail.append(title, body);
-      detail.classList.remove("is-open");
-    }
-    renderMap();
+const MAP_FRAME = typeof L === "undefined" ? null : L.latLngBounds([-144, 0], [0, 176]);
+const ACCURACY_MAP = new URLSearchParams(location.search).get("accuracy") === "1";
+
+function paintLeaflet(viewport, items, activeId, onSelect) {
+  const map = viewport?.frontierMap;
+  if (!map) return;
+  if (map._pinLayer) map.removeLayer(map._pinLayer);
+  const stacks = new Map();
+  const layer = L.layerGroup();
+  const found = foundIds();
+  for (const item of items) {
+    const key = `${item.lat}|${item.lng}`;
+    const index = stacks.get(key) || 0;
+    stacks.set(key, index + 1);
+    const style = styleFor(item.category);
+    const angle = index * 1.15;
+    const radius = index === 0 ? 0 : 12 + (index - 1) * 3;
+    const icon = L.divIcon({
+      className: `map-marker${markerKind(item)}${activeId === item.id ? " active" : ""}${found.has(item.id) ? " found" : ""}`,
+      html: `<svg viewBox="0 0 24 24" aria-hidden="true">${MARKER_GLYPHS[style.glyph] || MARKER_GLYPHS.xmark}</svg>`,
+      iconSize: [22, 22],
+      iconAnchor: [11 - Math.cos(angle) * radius, 11 - Math.sin(angle) * radius]
+    });
+    const marker = L.marker([item.lat, item.lng], { icon, pane: "pins", keyboard: false, bubblingMouseEvents: false });
+    marker.on("click", event => {
+      if (event.originalEvent) event.originalEvent.stopPropagation();
+      onSelect(item);
+    });
+    marker.on("add", () => {
+      const element = marker.getElement();
+      if (!element) return;
+      element.style.background = style.color;
+      element.style.color = style.ink;
+      const name = item.title || item.name || "Marker";
+      element.title = name;
+      element.setAttribute("aria-label", name);
+    });
+    layer.addLayer(marker);
   }
-  const place = state.hiddenPlaces.find(entry => entry.id === state.selectedHiddenId);
-  if (state.selectedHiddenId && (!place || !modeMatches(place))) {
-    state.selectedHiddenId = null;
-    const detail = $("#hiddenDetail");
-    if (detail) {
-      detail.replaceChildren();
-      const title = document.createElement("h3");
-      title.textContent = "Select a hidden place";
-      const body = document.createElement("p");
-      body.textContent = "That place does not match this play mode.";
-      detail.append(title, body);
-      detail.classList.remove("is-open");
-    }
-    renderHiddenMap();
-    renderHiddenList();
-  }
+  layer.addTo(map);
+  map._pinLayer = layer;
 }
 
-const MAP_GAZETTEER = [
-  ["Ambarino", 63.8, 11.5], ["New Hanover", 67.4, 38], ["West Elizabeth", 42.2, 42.8],
-  ["Lemoyne", 79.2, 65.2], ["New Austin", 22.1, 84.9], ["Grizzlies West", 54, 17.7],
-  ["Grizzlies East", 77.2, 15.6], ["Cumberland Forest", 53.5, 32.6], ["Heartlands", 63.3, 46.2],
-  ["Roanoke Ridge", 85.9, 27.9], ["Scarlett Meadows", 71, 43.5], ["Bayou Nwa", 77.2, 53.7],
-  ["Bluewater Marsh", 86.9, 36.7], ["Big Valley", 45.8, 50.3], ["Tall Trees", 38.6, 58.4],
-  ["Great Plains", 46.8, 63.9], ["Hennigan's Stead", 38.6, 75.4], ["Cholla Springs", 26.7, 76.8],
-  ["Rio Bravo", 18.5, 89], ["Gaptooth Ridge", 9.8, 79.5], ["Colter", 55, 13.6], ["Wapiti", 70, 21.7],
-  ["Valentine", 57.1, 34], ["Emerald Ranch", 71.5, 41.4], ["Strawberry", 39.6, 53.7],
-  ["Blackwater", 43.2, 67.3], ["Rhodes", 73.6, 52.3], ["Saint Denis", 85.4, 63.2],
-  ["Annesburg", 81.8, 22.4], ["Van Horn Trading Post", 88, 33.3], ["Van Horn", 88, 33.3],
-  ["Armadillo", 29.8, 78.1], ["Tumbleweed", 10.8, 80.8], ["Flat Iron Lake", 67.4, 59.8],
-  ["San Luis River", 25.2, 87.6], ["Lannahechee River", 93.1, 51.6]
-].map(([name, x, y]) => ({ name: name.toLowerCase(), x, y }));
-
-function mountSchematicMap(viewport, onZoom) {
-  if (!viewport || viewport.dataset.zoomReady) return;
+function mountLeafletMap(viewport, paneId) {
+  if (!viewport || viewport.dataset.zoomReady || typeof L === "undefined" || !MAP_FRAME) return;
   viewport.dataset.zoomReady = "1";
-  if (viewport.closest(".map-frame")?.classList.contains("is-expanded")) syncMapScrollLock();
   viewport.dataset.scale = "1";
   viewport.dataset.detail = "far";
-  const stage = document.createElement("div");
-  stage.className = "map-stage";
-  while (viewport.firstChild) stage.appendChild(viewport.firstChild);
-  viewport.appendChild(stage);
-  let scale = 1;
-  let x = 0;
-  let y = 0;
-  let drag = null;
-  let pinch = null;
-  let pinched = false;
-  let lastTapAt = 0;
-  let lastTapX = 0;
-  let lastTapY = 0;
-  let drawnBucket = -1;
-  let drawnDetail = "";
-  let drawnSize = "";
-  let fitted = false;
-  const pointers = new Map();
-  const maxScale = 10;
-  const sheetAspect = 3888 / 2944;
-  const frameOf = () => viewport.closest(".map-frame");
-  const spun = () => Boolean(frameOf()?.classList.contains("is-turned")) && window.innerWidth < window.innerHeight;
-  const metrics = () => {
-    const cw = viewport.clientWidth || 1;
-    const ch = viewport.clientHeight || 1;
-    const expanded = Boolean(frameOf()?.classList.contains("is-expanded"));
-    if (!expanded) return { cw, ch, mw: cw, mh: ch, expanded };
-    const portrait = cw <= ch && !spun();
-    if (portrait) return { cw, ch, mw: cw, mh: cw / sheetAspect, expanded };
-    let mw = cw;
-    let mh = cw / sheetAspect;
-    if (mh > ch) {
-      mh = ch;
-      mw = mh * sheetAspect;
-    }
-    return { cw, ch, mw, mh, expanded };
-  };
-  const localPoint = (clientX, clientY) => {
-    const rect = viewport.getBoundingClientRect();
-    if (!spun()) return { x: clientX - rect.left, y: clientY - rect.top };
-    const vx = clientX - (rect.left + rect.width / 2);
-    const vy = clientY - (rect.top + rect.height / 2);
-    return { x: viewport.clientWidth / 2 + vy, y: viewport.clientHeight / 2 - vx };
-  };
-  const layoutStage = () => {
-    const { mw, mh, expanded } = metrics();
-    if (!expanded) {
-      stage.style.inset = "";
-      stage.style.left = "";
-      stage.style.top = "";
-      stage.style.width = "";
-      stage.style.height = "";
-      return;
-    }
-    stage.style.inset = "auto";
-    stage.style.left = "0px";
-    stage.style.top = "0px";
-    stage.style.width = `${mw}px`;
-    stage.style.height = `${mh}px`;
-  };
-  const clampPan = () => {
-    const { cw, ch, mw, mh } = metrics();
-    const viewW = mw * scale;
-    const viewH = mh * scale;
-    if (viewW <= cw) x = (cw - viewW) / 2;
-    else x = Math.min(0, Math.max(cw - viewW, x));
-    if (viewH <= ch) y = (ch - viewH) / 2;
-    else y = Math.min(0, Math.max(ch - viewH, y));
-  };
-  const apply = () => {
-    layoutStage();
-    if (!fitted && scale === 1 && metrics().cw > 20) {
-      const box = metrics();
-      x = (box.cw - box.mw) / 2;
-      y = (box.ch - box.mh) / 2;
-      fitted = true;
-    }
-    clampPan();
-    stage.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
-    stage.querySelectorAll(".map-marker").forEach(marker => {
-      marker.style.transform = `translate(-50%, -50%) scale(${1 / scale})`;
-    });
-    const pxPerUser = (metrics().mw || 1) / 3888;
-    stage.querySelectorAll(".state-borders, .county-borders").forEach(node => {
-      const hairline = node.classList.contains("county-borders") ? 0.9 : 1.15;
-      const dash = node.classList.contains("county-borders") ? 1.15 : 1.45;
-      const gap = node.classList.contains("county-borders") ? 3.1 : 3.6;
-      const unit = pxPerUser * scale || 1;
-      node.style.strokeWidth = String(hairline / unit);
-      node.style.strokeDasharray = `${dash / unit} ${gap / unit}`;
-    });
-    const detail = scale < 1.8 ? "far" : scale < 3.6 ? "mid" : "close";
-    viewport.dataset.scale = scale.toFixed(3);
+  const map = L.map(viewport, {
+    crs: L.CRS.Simple,
+    minZoom: -2,
+    maxZoom: 7,
+    zoomSnap: 0,
+    zoomDelta: 0.5,
+    inertia: true,
+    inertiaDeceleration: 2800,
+    zoomControl: false,
+    attributionControl: false,
+    doubleClickZoom: true,
+    touchZoom: true,
+    scrollWheelZoom: true,
+    boxZoom: false,
+    keyboard: false,
+    maxBounds: MAP_FRAME.pad(0.06),
+    maxBoundsViscosity: 1
+  });
+  viewport.frontierMap = map;
+  const pane = map.createPane("pins");
+  pane.id = paneId;
+  pane.style.zIndex = "650";
+  const layers = ["far", "mid", "close"].map(name => L.imageOverlay(`content/parchment-${name}.png`, MAP_FRAME));
+  if (ACCURACY_MAP) {
+    L.tileLayer("https://s.rsg.sc/sc/images/games/RDR2/map/game/{z}/{x}/{y}.jpg", {
+      bounds: MAP_FRAME,
+      minZoom: 2,
+      maxZoom: 7,
+      noWrap: true
+    }).addTo(map);
+  } else {
+    layers.forEach(layer => layer.addTo(map));
+  }
+  let fitting = false;
+  const applyDetail = () => {
+    const fit = viewport._fitZoom ?? map.getZoom();
+    const ratio = Math.pow(2, map.getZoom() - fit);
+    const detail = ratio < 1.8 ? "far" : ratio < 3.6 ? "mid" : "close";
+    viewport.dataset.scale = ratio.toFixed(3);
     viewport.dataset.detail = detail;
-    const bucket = Math.round(scale * 5);
-    const sizeKey = `${Math.round(metrics().mw)}x${Math.round(metrics().mh)}`;
-    if (bucket !== drawnBucket || detail !== drawnDetail || sizeKey !== drawnSize) {
-      drawnBucket = bucket;
-      drawnDetail = detail;
-      drawnSize = sizeKey;
-      if (typeof onZoom === "function") onZoom();
+    if (!ACCURACY_MAP) {
+      layers[0].setOpacity(detail === "far" ? 1 : 0);
+      layers[1].setOpacity(detail === "mid" ? 1 : 0);
+      layers[2].setOpacity(detail === "close" ? 1 : 0);
     }
   };
-  const zoomToward = (nextScale, px, py) => {
-    const { cw, ch } = metrics();
-    const focusX = Number.isFinite(px) ? px : cw / 2;
-    const focusY = Number.isFinite(py) ? py : ch / 2;
-    const worldX = (focusX - x) / scale;
-    const worldY = (focusY - y) / scale;
-    scale = Math.min(maxScale, Math.max(1, nextScale));
-    x = focusX - worldX * scale;
-    y = focusY - worldY * scale;
-    apply();
+  const fitHome = () => {
+    fitting = true;
+    map.setMinZoom(-2);
+    map.invalidateSize({ animate: false });
+    map.fitBounds(MAP_FRAME, { animate: false, padding: [10, 10] });
+    viewport._fitZoom = map.getZoom();
+    map.setMinZoom(viewport._fitZoom);
+    viewport._userMoved = false;
+    fitting = false;
+    applyDetail();
   };
-  const centerSheet = () => {
-    const box = metrics();
-    scale = 1;
-    x = (box.cw - box.mw) / 2;
-    y = (box.ch - box.mh) / 2;
-    fitted = true;
-    apply();
+  viewport.frontierReflow = () => {
+    if (viewport._userMoved) {
+      map.invalidateSize({ animate: false });
+      applyDetail();
+      return;
+    }
+    fitHome();
   };
-  viewport.frontierReflow = () => apply();
   viewport.frontierZoomTo = (nextScale, xPercent, yPercent) => {
-    const { cw, ch, mw, mh } = metrics();
-    const target = Math.min(maxScale, Math.max(1, Number(nextScale) || 1));
-    if (!Number.isFinite(Number(xPercent)) || !Number.isFinite(Number(yPercent))) {
-      zoomToward(target, cw / 2, ch / 2);
-      return;
-    }
-    scale = target;
-    x = cw / 2 - (Number(xPercent) / 100) * mw * scale;
-    y = ch / 2 - (Number(yPercent) / 100) * mh * scale;
-    apply();
+    const ratio = Math.max(0.2, Number(nextScale) || 1);
+    const fit = viewport._fitZoom ?? map.getZoom();
+    const zoom = Math.min(map.getMaxZoom(), Math.max(map.getMinZoom(), fit + Math.log2(ratio)));
+    const lat = Number.isFinite(Number(yPercent)) ? -144 * (Number(yPercent) / 100) : -72;
+    const lng = Number.isFinite(Number(xPercent)) ? 176 * (Number(xPercent) / 100) : 88;
+    viewport._userMoved = ratio > 1.05;
+    map.setView([lat, lng], zoom, { animate: false });
+    applyDetail();
   };
-  const tools = document.createElement("div");
-  tools.className = "map-tools";
-  tools.append(
-    actionButton("ghost compact", "Zoom in", () => zoomToward(scale * 1.25, viewport.clientWidth / 2, viewport.clientHeight / 2)),
-    actionButton("ghost compact", "Zoom out", () => zoomToward(scale / 1.25, viewport.clientWidth / 2, viewport.clientHeight / 2)),
-    actionButton("ghost compact", "Reset map", () => centerSheet())
-  );
-  viewport.parentElement?.insertBefore(tools, viewport);
+  map.on("zoom move", () => {
+    if (!fitting) viewport._userMoved = true;
+    applyDetail();
+  });
   const frame = viewport.closest(".map-frame");
-  const filterButton = frame?.querySelector(".map-filter-toggle");
-  const drawer = frame?.querySelector(".map-drawer");
-  if (filterButton && drawer && !filterButton.dataset.bound) {
-    filterButton.dataset.bound = "1";
-    filterButton.addEventListener("click", () => {
-      const open = drawer.classList.toggle("is-open");
-      filterButton.setAttribute("aria-expanded", open ? "true" : "false");
-      filterButton.textContent = open ? "Hide filters" : "Filters";
-    });
-  }
-  const expandButton = frame?.querySelector(".map-expand");
-  if (expandButton && frame && !expandButton.dataset.bound) {
-    expandButton.dataset.bound = "1";
-    expandButton.addEventListener("click", () => {
-      const open = frame.classList.toggle("is-expanded");
-      expandButton.textContent = open ? "Close" : "Expand";
-      expandButton.setAttribute("aria-pressed", open ? "true" : "false");
-      syncMapScrollLock();
-      fitted = false;
-      scale = 1;
-      viewport.frontierReflow?.();
-    });
-  }
-  const orient = frame?.querySelector(".map-orient");
-  if (orient && !orient.dataset.bound) {
-    orient.dataset.bound = "1";
-    orient.addEventListener("click", async () => {
-      const on = frame.classList.toggle("is-turned");
-      orient.setAttribute("aria-pressed", on ? "true" : "false");
-      orient.textContent = on ? "Portrait" : "Landscape";
-      fitted = false;
-      scale = 1;
-      viewport.frontierReflow?.();
-      try {
-        if (on && screen.orientation?.lock) await screen.orientation.lock("landscape");
-        else screen.orientation?.unlock?.();
-      } catch {}
-      fitted = false;
-      viewport.frontierReflow?.();
-    });
-  }
+  frame?.querySelector(".map-zoom-in")?.addEventListener("click", () => map.zoomIn(0.5));
+  frame?.querySelector(".map-zoom-out")?.addEventListener("click", () => map.zoomOut(0.5));
+  frame?.querySelector(".map-recenter")?.addEventListener("click", () => {
+    viewport._userMoved = false;
+    fitHome();
+  });
+  const searchToggle = frame?.querySelector(".map-search-toggle");
+  const searchPop = frame?.querySelector(".map-search-pop");
   const search = frame?.querySelector(".map-search-input");
-  if (search && !search.dataset.bound) {
-    search.dataset.bound = "1";
-    const fly = () => {
-      const query = search.value.trim().toLowerCase();
-      if (!query) return;
-      const hidden = viewport.id === "hiddenMap";
-      const pool = hidden
-        ? state.hiddenPlaces.filter(modeMatches)
-        : state.mapLocations.filter(modeMatches);
-      const label = item => `${item.title || ""} ${item.name || ""}`.toLowerCase();
-      const haystack = item => `${label(item)} ${item.breed || ""} ${item.coat || ""}`.toLowerCase();
-      const exact = pool.find(entry => label(entry) === query);
-      const gazExact = MAP_GAZETTEER.find(entry => entry.name === query);
-      const starts = pool.find(entry => label(entry).startsWith(query));
-      const gazStarts = MAP_GAZETTEER.find(entry => entry.name.startsWith(query));
-      const includes = pool.find(entry => haystack(entry).includes(query));
-      const gazIncludes = MAP_GAZETTEER.find(entry => entry.name.includes(query));
-      const regional = pool.find(entry => `${haystack(entry)} ${(entry.region || "").toLowerCase()}`.includes(query));
-      const item = exact || (gazExact ? null : starts) || (gazExact || gazStarts ? null : includes) || (gazExact || gazStarts || gazIncludes ? null : regional);
-      const place = item ? null : (gazExact || gazStarts || (includes ? null : gazIncludes));
-      if (!item && !place) {
-        search.setCustomValidity("No matching place");
-        search.reportValidity();
-        return;
-      }
-      search.setCustomValidity("");
-      if (place && !item) {
-        state.selectedMapId = null;
-        state.selectedHiddenId = null;
-        const detail = $(hidden ? "#hiddenDetail" : "#mapDetail");
-        if (detail) {
-          detail.classList.remove("is-open");
-          detail.replaceChildren();
-        }
-        if (!hidden) renderMap();
-        viewport.frontierZoomTo(3.4, place.x, place.y);
-        return;
-      }
-      if (hidden) {
-        if (state.hiddenCategory !== "All" && item.category !== state.hiddenCategory) {
-          state.hiddenCategory = "All";
-          renderHiddenTags();
-        }
-        showHiddenDetail(item);
-      } else {
-        if (!mapCategoryOn(item.category)) {
-          state.disabledMapCategories.delete(item.category);
-          renderMapTags();
-        }
-        showMapDetail(item);
-      }
-      viewport.frontierZoomTo(4.2, item.x, item.y);
-    };
-    search.addEventListener("keydown", event => {
-      if (event.key !== "Enter") return;
-      event.preventDefault();
-      fly();
-    });
-  }
-  window.addEventListener("resize", () => {
-    if (scale === 1) fitted = false;
-    apply();
+  searchToggle?.addEventListener("click", () => {
+    const open = Boolean(searchPop?.hidden);
+    if (searchPop) searchPop.hidden = !open;
+    searchToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) search?.focus();
   });
-  const distance = () => {
-    const points = [...pointers.values()];
-    if (points.length < 2) return 0;
-    return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
-  };
-  viewport.addEventListener("pointerdown", event => {
-    if (event.target.closest("button, a")) return;
-    viewport.setPointerCapture?.(event.pointerId);
-    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    if (pointers.size === 1) drag = { x: event.clientX, y: event.clientY, ox: x, oy: y, moved: false };
-    if (pointers.size === 2) {
-      pinched = true;
-      const points = [...pointers.values()];
-      const mid = localPoint((points[0].x + points[1].x) / 2, (points[0].y + points[1].y) / 2);
-      pinch = { dist: distance() || 1, scale, wx: (mid.x - x) / scale, wy: (mid.y - y) / scale };
-    }
+  const layersButton = frame?.querySelector(".map-layers-toggle");
+  const sheet = frame?.querySelector(".map-sheet");
+  layersButton?.addEventListener("click", () => {
+    const open = Boolean(sheet?.hidden);
+    if (sheet) sheet.hidden = !open;
+    layersButton.setAttribute("aria-expanded", open ? "true" : "false");
+    const card = viewport.closest(".map-panel")?.querySelector(".map-detail");
+    if (open && card) card.classList.remove("is-open");
   });
-  viewport.addEventListener("pointermove", event => {
-    if (!pointers.has(event.pointerId)) return;
-    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    if (pointers.size >= 2 && pinch) {
-      const points = [...pointers.values()];
-      const mid = localPoint((points[0].x + points[1].x) / 2, (points[0].y + points[1].y) / 2);
-      scale = Math.min(maxScale, Math.max(1, pinch.scale * (distance() / pinch.dist)));
-      x = mid.x - pinch.wx * scale;
-      y = mid.y - pinch.wy * scale;
-      apply();
+  const fly = () => {
+    const query = search.value.trim().toLowerCase();
+    if (!query) return;
+    const hidden = viewport.id === "hiddenMap";
+    const pool = hidden ? state.hiddenPlaces.filter(modeMatches) : state.mapLocations.filter(modeMatches);
+    const labelOf = item => `${item.title || ""} ${item.name || ""}`.toLowerCase();
+    const item = pool.find(entry => labelOf(entry) === query)
+      || pool.find(entry => labelOf(entry).startsWith(query))
+      || pool.find(entry => `${labelOf(entry)} ${entry.breed || ""} ${entry.coat || ""} ${entry.region || ""}`.includes(query));
+    const gaz = (state.gazetteer || []).find(entry => entry.name.toLowerCase() === query)
+      || (state.gazetteer || []).find(entry => entry.name.toLowerCase().startsWith(query))
+      || (state.gazetteer || []).find(entry => entry.name.toLowerCase().includes(query));
+    if (!item && !gaz) {
+      search.setCustomValidity("No matching place");
+      search.reportValidity();
       return;
     }
-    if (drag) {
-      const mdx = event.clientX - drag.x;
-      const mdy = event.clientY - drag.y;
-      if (Math.hypot(mdx, mdy) > 8) drag.moved = true;
-      if (spun()) {
-        x = drag.ox + mdy;
-        y = drag.oy - mdx;
-      } else {
-        x = drag.ox + mdx;
-        y = drag.oy + mdy;
+    search.setCustomValidity("");
+    if (item && hidden) showHiddenDetail(item);
+    else if (item) {
+      if (!mapCategoryOn(item.category)) {
+        state.disabledMapCategories.delete(item.category);
+        renderMapTags();
       }
-      apply();
+      showMapDetail(item);
     }
-  });
-  const endPointer = event => {
-    const moved = Boolean(drag?.moved);
-    pointers.delete(event.pointerId);
-    if (pointers.size < 2) pinch = null;
-    if (!pointers.size) {
-      if (event.type === "pointerup" && !moved && !pinched && !event.target.closest("button, a, input")) {
-        const now = performance.now();
-        if (now - lastTapAt < 300 && Math.hypot(event.clientX - lastTapX, event.clientY - lastTapY) < 28) {
-          const point = localPoint(event.clientX, event.clientY);
-          zoomToward(Math.min(maxScale, Math.max(scale * 2.05, 2.4)), point.x, point.y);
-          lastTapAt = 0;
-        } else {
-          lastTapAt = now;
-          lastTapX = event.clientX;
-          lastTapY = event.clientY;
-        }
-      }
-      drag = null;
-      pinched = false;
-    }
+    const lat = Number.isFinite(item?.lat) ? item.lat : gaz?.lat;
+    const lng = Number.isFinite(item?.lng) ? item.lng : gaz?.lng;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const zoom = Math.min(map.getMaxZoom(), (viewport._fitZoom || 1) + Math.log2(4.2));
+    viewport._userMoved = true;
+    map.setView([lat, lng], zoom, { animate: true });
   };
-  viewport.addEventListener("pointerup", endPointer);
-  viewport.addEventListener("pointercancel", endPointer);
-  viewport.addEventListener("wheel", event => {
+  search?.addEventListener("keydown", event => {
+    if (event.key !== "Enter") return;
     event.preventDefault();
-    const point = localPoint(event.clientX, event.clientY);
-    zoomToward(event.deltaY > 0 ? scale / 1.12 : scale * 1.12, point.x, point.y);
-  }, { passive: false });
-  apply();
-}
-
-async function loadFrontierMap() {
-  try {
-    const response = await fetch("frontier-map.svg");
-    if (!response.ok) return;
-    const text = await response.text();
-    document.querySelectorAll(".map-art").forEach((node, index) => {
-      node.innerHTML = text.split("MAPID").join(`m${index}`);
-    });
-  } catch {}
+    fly();
+  });
+  searchPop?.addEventListener("submit", event => {
+    event.preventDefault();
+    fly();
+  });
+  window.addEventListener("resize", () => viewport.frontierReflow());
+  requestAnimationFrame(() => fitHome());
 }
 
 function setCoachState(stateName, detail) {
@@ -2972,9 +2674,8 @@ if ("serviceWorker" in navigator && window.location.hostname !== "appassets.andr
 
 $("#onlineDot").onclick = () => checkStatus(true);
 restoreCoachProfile();
-mountSchematicMap($("#fieldMap"), renderMap);
-mountSchematicMap($("#hiddenMap"), renderHiddenMap);
-loadFrontierMap();
+mountLeafletMap($("#fieldMap"), "mapMarkers");
+mountLeafletMap($("#hiddenMap"), "hiddenMarkers");
 const coachStart = $("#coachStart");
 if (coachStart) coachStart.onclick = () => startCoach();
 const coachPause = $("#coachPause");

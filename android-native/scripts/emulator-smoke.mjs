@@ -384,7 +384,7 @@ for (let attempt = 0; attempt < 15; attempt += 1) {
       const markers = document.querySelectorAll("#mapMarkers .map-marker").length;
       const legendaryMarkers = document.querySelectorAll("#mapMarkers .map-marker.legendary").length;
       const secretMarkers = document.querySelectorAll("#mapMarkers .map-marker.secret").length;
-      const svg = document.querySelectorAll("#fieldMap svg").length;
+      const svg = document.querySelectorAll("#fieldMap .leaflet-image-layer").length;
       if (map && map.frontierZoomTo) map.frontierZoomTo(1, 50, 50);
       if (hiddenMap && hiddenMap.frontierZoomTo) hiddenMap.frontierZoomTo(1, 50, 50);
       return {
@@ -496,6 +496,59 @@ await mapShot("map-zoom-0", "fieldMap", 1, 50, 50, "far");
 await mapShot("map-zoom-mid", "fieldMap", 2.5, 70, 55, "mid");
 await mapShot("map-zoom-close", "fieldMap", 5.6, 84, 65, "close");
 await mapShot("hidden-zoom-mid", "hiddenMap", 2.5, 55, 41, "mid");
+
+const gestureStart = await send("Runtime.evaluate", {
+  expression: `(() => {
+    const map = document.getElementById("fieldMap")?.frontierMap;
+    if (!map) return JSON.stringify({ error: "no map" });
+    map.setView([-72, 88], 2.2, { animate: false });
+    const rect = map.getContainer().getBoundingClientRect();
+    const center = map.getCenter();
+    return JSON.stringify({ left: rect.left, top: rect.top, width: rect.width, height: rect.height, zoom: map.getZoom(), lat: center.lat, lng: center.lng });
+  })()`,
+  returnByValue: true
+});
+let gestureReport = {};
+try { gestureReport = JSON.parse(gestureStart?.result?.value || "{}"); } catch { gestureReport = { error: "parse" }; }
+if (!gestureReport.error && gestureReport.width) {
+  const x = gestureReport.left + 36;
+  const y = gestureReport.top + 36;
+  await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y, id: 1 }] });
+  await delay(50);
+  await send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x + 120, y: y + 24, id: 1 }] });
+  await delay(50);
+  await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await delay(200);
+  const cx = gestureReport.left + gestureReport.width / 2;
+  const cy = gestureReport.top + gestureReport.height / 2;
+  await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: cx - 28, y: cy, id: 1 }, { x: cx + 28, y: cy, id: 2 }] });
+  await delay(50);
+  await send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: cx - 96, y: cy, id: 1 }, { x: cx + 96, y: cy, id: 2 }] });
+  await delay(50);
+  await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await delay(200);
+  await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: cx, y: cy, id: 1 }] });
+  await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await delay(40);
+  await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: cx, y: cy, id: 1 }] });
+  await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await delay(250);
+  const gestureEnd = await send("Runtime.evaluate", {
+    expression: `(() => {
+      const map = document.getElementById("fieldMap").frontierMap;
+      const center = map.getCenter();
+      return JSON.stringify({ zoom: map.getZoom(), lat: center.lat, lng: center.lng });
+    })()`,
+    returnByValue: true
+  });
+  const end = JSON.parse(gestureEnd?.result?.value || "{}");
+  gestureReport.pinched = end.zoom;
+  gestureReport.pan = Math.hypot(end.lng - gestureReport.lng, end.lat - gestureReport.lat);
+  gestureReport.endZoom = end.zoom;
+}
+console.log("gesture", JSON.stringify(gestureReport));
+if (!(gestureReport.pan > 0.2)) problems.push(`pan ${JSON.stringify(gestureReport)}`);
+if (!(gestureReport.pinched > gestureReport.zoom)) problems.push(`pinch zoom ${JSON.stringify(gestureReport)}`);
 
 const health = await send("Runtime.evaluate", {
   expression: `fetch("https://frontier-guide-api.onrender.com/api/health", { cache: "no-store" }).then(async response => JSON.stringify({ status: response.status, body: await response.json() })).catch(error => JSON.stringify({ error: String(error) }))`,
