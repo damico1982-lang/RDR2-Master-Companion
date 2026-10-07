@@ -479,8 +479,8 @@ a:focus-visible {
   overflow: hidden;
   border: 1px solid #6e5436;
   border-radius: 4px;
-  background: #e5d3ae;
-  box-shadow: inset 0 0 48px rgba(92, 64, 36, .16), 0 10px 24px rgba(0, 0, 0, .18);
+  background: #e3d2ae;
+  box-shadow: inset 0 0 28px rgba(92, 64, 36, .08), 0 10px 24px rgba(0, 0, 0, .18);
   touch-action: none;
 }
 .field-map::before {
@@ -489,13 +489,25 @@ a:focus-visible {
   z-index: 2;
   pointer-events: none;
   content: "";
-  opacity: .18;
+  opacity: .06;
   background-image: radial-gradient(circle at 20% 10%, rgba(255, 248, 230, .45), transparent 28%), linear-gradient(90deg, rgba(90, 60, 30, .08), transparent 8%, transparent 92%, rgba(90, 60, 30, .1));
 }
 .field-map[data-detail="far"] .layer-mid,
 .field-map[data-detail="far"] .layer-close { display: none; }
 .field-map[data-detail="mid"] .layer-close { display: none; }
-.field-map[data-detail="close"] .region-label { opacity: .2; }
+.field-map[data-detail="close"] .region-label { opacity: .16; }
+.region-label { font-family: Georgia, "Times New Roman", serif; font-size: 42px; fill: #5a4332; }
+.region-label.region-narrow { font-size: 22px; }
+.field-map[data-detail="mid"] .region-label { font-size: 24px; opacity: .4; }
+.field-map[data-detail="mid"] .region-label.region-narrow { font-size: 15px; }
+.town-label, .water-label, .creek, .subregion-label { font-family: Georgia, "Times New Roman", serif; stroke: #e6d4b0; stroke-width: 2.4px; paint-order: stroke fill; }
+.town-label { font-size: 18px; fill: #3c2c1e; letter-spacing: 1.3px; }
+.field-map[data-detail="mid"] .town-label { font-size: 13px; }
+.field-map[data-detail="close"] .town-label { font-size: 8px; }
+.water-label { font-size: 14px; fill: #24302c; letter-spacing: 1.4px; }
+.creek { font-size: 11px; fill: #2a3834; letter-spacing: 1px; }
+.subregion-label { font-size: 12px; fill: #6a543c; letter-spacing: 1.5px; }
+.field-map[data-detail="close"] .subregion-label { font-size: 8px; }
 .map-art { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
 .map-art svg { display: block; width: 100%; height: 100%; }
 .map-markers { position: absolute; inset: 0; z-index: 3; }
@@ -535,35 +547,29 @@ a:focus-visible {
   position: absolute;
   z-index: 3;
   display: grid;
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   place-items: center;
-  border: 2px solid #f7f0e2;
+  border: 1.5px solid #1c1915;
   border-radius: 50%;
   padding: 0;
-  color: #f7f0e2;
-  background: #6e2a28;
-  box-shadow: 0 2px 6px rgba(40, 24, 12, .4);
-  font: 800 11px/1 Georgia, "Times New Roman", serif;
+  color: #1a1612;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(40, 24, 12, .35);
+  font: 700 10px/1 Georgia, "Times New Roman", serif;
   transform: translate(-50%, -50%);
 }
-.map-marker.cluster { width: 34px; height: 34px; background: #3e2a1c; font-size: 13px; }
-.map-marker.active { background: #8a6230; box-shadow: 0 0 0 4px rgba(90, 60, 30, .28); }
-.map-marker.found { background: #2d5a3c; border-color: #d7eccf; }
-.map-marker.legendary { background: #1e5c3d; border-color: #d7f5c8; }
-.map-marker.secret { background: #2a3f78; border-color: #d5defa; }
-.map-marker.cave { background: #6a4a2a; }
-.map-marker.waterfall { background: #1d5f78; }
-.map-marker.mine { background: #5c5348; }
-.map-marker.underground { background: #3e3558; }
-.map-marker.mountain { background: #6e3b32; }
-.field-map[data-detail="close"] .map-marker:not(.cluster) {
-  width: 28px;
-  height: 28px;
-  border-radius: 50% 50% 50% 0;
-  transform: translate(-50%, -100%) rotate(-45deg);
-}
-.field-map[data-detail="close"] .map-marker:not(.cluster) span { transform: rotate(45deg); }
+.map-marker.cluster { width: 26px; height: 26px; background: #fff; color: #1a1612; border-color: #1c1915; font-size: 11px; }
+.map-marker.active { box-shadow: 0 0 0 3px rgba(90, 60, 30, .45); }
+.map-marker.found { border-color: #1f6b3a; box-shadow: inset 0 0 0 1.5px #1f6b3a; }
+.map-marker.legendary { border-color: #1e5c3d; }
+.map-marker.secret { border-color: #2a3f78; }
+.map-marker.cave { border-color: #6a4a2a; }
+.map-marker.waterfall { border-color: #1d5f78; }
+.map-marker.mine { border-color: #5c5348; }
+.map-marker.underground { border-color: #3e3558; }
+.map-marker.mountain { border-color: #6e3b32; }
+.field-map[data-detail="close"] .map-marker:not(.cluster) { width: 24px; height: 24px; }
 .card.highlight { box-shadow: inset 0 0 0 1px #d19d45; }
 .card p strong { color: #f3e6cf; }
 .unconfirmed { color: #e0b15a !important; }

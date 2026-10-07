@@ -1940,23 +1940,6 @@ function mapViewportScale(viewport) {
   return Number.isFinite(value) && value > 0 ? value : 1;
 }
 
-function pinGlyph(item) {
-  const category = item.category || "";
-  if (category === "Legendary") return "★";
-  if (category === "Secrets") return "◆";
-  if (category === "Waterfall") return "W";
-  if (category === "Cave") return "C";
-  if (category === "Mine") return "M";
-  if (category === "Underground") return "U";
-  if (category === "Mountain") return "A";
-  if (category === "Treasure") return "T";
-  if (category === "Services") return "F";
-  if (category === "Money") return "$";
-  if (category === "Valuables") return "V";
-  if (category === "Gold" || category === "Online Gold") return "G";
-  return "•";
-}
-
 function markerKind(item) {
   if (item.category === "Legendary") return " legendary";
   if (item.category === "Secrets") return " secret";
@@ -1989,7 +1972,7 @@ function spreadPins(items, scale = 1) {
 }
 
 function groupPins(items, scale) {
-  if (scale >= 2.2) {
+  if (scale >= 1.55) {
     return spreadPins(items, scale).map(pin => ({
       item: pin.item,
       items: [pin.item],
@@ -1998,7 +1981,7 @@ function groupPins(items, scale) {
       cluster: false
     }));
   }
-  const threshold = 10 / Math.max(scale, 1);
+  const threshold = 5.6 / Math.max(scale, 1);
   const groups = [];
   for (const item of items) {
     const x = Number(item.x);
@@ -2034,7 +2017,6 @@ function paintMarkers(layer, items, activeId, onSelect) {
   if (!layer) return;
   const viewport = layer.closest(".field-map");
   const scale = mapViewportScale(viewport);
-  const detail = viewport && viewport.dataset.detail || "far";
   const found = foundIds();
   layer.replaceChildren();
   let number = 0;
@@ -2059,7 +2041,7 @@ function paintMarkers(layer, items, activeId, onSelect) {
       const active = activeId === item.id ? " active" : "";
       const foundClass = found.has(item.id) ? " found" : "";
       marker.className = `map-marker${markerKind(item)}${active}${foundClass}`;
-      label.textContent = detail === "close" ? pinGlyph(item) : String(number);
+      label.textContent = String(number);
       const name = item.title || item.name;
       marker.title = name;
       marker.setAttribute("aria-label", name);
