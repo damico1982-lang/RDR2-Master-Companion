@@ -383,19 +383,8 @@ async function sendRetry(method, params = {}, timeoutMs = 30000) {
 }
 
 await openPage();
-try {
-  await send("Runtime.enable");
-} catch (error) {
-  console.error("Runtime.enable failed once, retrying", error.message);
-  dumpLogs();
-  const previous = ws;
-  ws = null;
-  previous.close();
-  await delay(1000);
-  await openPage();
-  await send("Runtime.enable");
-}
-await send("Console.enable").catch(() => {});
+await sendRetry("Runtime.enable");
+await sendRetry("Console.enable").catch(() => {});
 
 let snapshot;
 for (let attempt = 0; attempt < 15; attempt += 1) {
