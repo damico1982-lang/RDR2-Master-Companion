@@ -1,10 +1,10 @@
 # RDR2 Master Companion
 
-Frontier Guide is an unofficial, phone-first companion for Red Dead Redemption 2 and Red Dead Online. Android v1.7.0 combines a conversational guide that remembers the chat, offline legendary animals, perfect-pelt weapons, secrets, and hidden places, a spoken server voice with a device fallback, photo uploads, a Live Gameplay Coach, Android screen capture with an explicit Stop sharing control, a zoomable parchment field map, Steam progress, and current web-update scans.
+Frontier Guide is an unofficial, phone-first companion for Red Dead Redemption 2 and Red Dead Online. Android v1.7.1 combines a conversational guide that remembers the chat, offline legendary animals, perfect-pelt weapons, secrets, and hidden places, a spoken server voice with a device fallback, photo uploads, a Live Gameplay Coach, Android screen capture with an explicit Stop sharing control, a zoomable parchment field map, Steam progress, and current web-update scans.
 
 The same themed interface is also served as an installable web app from the live Render URL. Open `https://frontier-guide-api.onrender.com` to use it in a mobile or desktop browser. First-party web and Android clients connect automatically; the shared access key remains available for CLI or other authorized clients. Browser camera and voice modes work over HTTPS; Android screen capture remains exclusive to the APK.
 
-Current release: Android and server **1.7.0**.
+Current release: Android and server **1.7.1**.
 
 The interface uses an original black, blood-red, parchment, and weathered-leather frontier theme. No Rockstar artwork or game assets are bundled.
 
@@ -75,7 +75,7 @@ Frontier Link is the Windows helper in `frontier-link/`. It pairs with the phone
 
 ## Android connection settings
 
-Version 1.7.0 fills the hosted server URL in Auto mode. Custom keeps a URL you type. Offline only does not call the server. Settings remain available for diagnostics or a custom deployment:
+Version 1.7.1 fills the hosted server URL in Auto mode. Custom keeps a URL you type. Offline only does not call the server. Settings remain available for diagnostics or a custom deployment:
 
 | Android field | Value |
 |---|---|

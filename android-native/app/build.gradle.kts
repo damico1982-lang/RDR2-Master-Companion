@@ -18,7 +18,7 @@ android {
     namespace="com.frontierguide.app"
     compileSdk=36
     buildFeatures { buildConfig = true }
-    defaultConfig { applicationId="com.frontierguide.app"; minSdk=29; targetSdk=36; versionCode=22; versionName="1.7.0" }
+    defaultConfig { applicationId="com.frontierguide.app"; minSdk=29; targetSdk=36; versionCode=23; versionName="1.7.1" }
     if (hasStableDebugKey) {
         val keystoreFile = stableKeystoreFile.get().asFile
         keystoreFile.parentFile?.mkdirs()
