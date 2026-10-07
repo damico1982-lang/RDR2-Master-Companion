@@ -453,25 +453,16 @@ await send("Page.enable").catch(() => {});
 async function mapShot(name, elementId, scale, x, y, detailName) {
   const detail = await send("Runtime.evaluate", {
     expression: `(async () => {
-      const panelId = ${JSON.stringify(elementId === "hiddenMap" ? "hiddenView" : "mapView")};
-      document.querySelectorAll(".view").forEach(element => element.classList.remove("active"));
-      document.getElementById(panelId)?.classList.add("active");
+      const view = ${JSON.stringify(elementId === "hiddenMap" ? "hidden" : "map")};
+      if (typeof setView === "function") setView(view);
       const map = document.getElementById(${JSON.stringify(elementId)});
-      const frame = map?.closest(".map-frame");
-      if (frame) {
-        frame.classList.add("is-expanded");
-        const expand = frame.querySelector(".map-expand");
-        if (expand) {
-          expand.textContent = "Close";
-          expand.setAttribute("aria-pressed", "true");
-        }
-      }
-      map?.scrollIntoView({ block: "start", behavior: "auto" });
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      map?.frontierReflow?.();
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       if (map && map.frontierZoomTo) map.frontierZoomTo(${scale}, ${x}, ${y});
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      const stage = map?.querySelector(".map-stage");
-      return JSON.stringify({ detail: map?.dataset.detail || "missing", transform: stage?.style.transform || "" });
+      const rect = map?.getBoundingClientRect();
+      return JSON.stringify({ detail: map?.dataset.detail || "missing", zoom: map?.frontierMap?.getZoom(), width: rect?.width || 0, height: rect?.height || 0 });
     })()`,
     awaitPromise: true,
     returnByValue: true
@@ -498,14 +489,20 @@ await mapShot("map-zoom-close", "fieldMap", 5.6, 84, 65, "close");
 await mapShot("hidden-zoom-mid", "hiddenMap", 2.5, 55, 41, "mid");
 
 const gestureStart = await send("Runtime.evaluate", {
-  expression: `(() => {
-    const map = document.getElementById("fieldMap")?.frontierMap;
+  expression: `(async () => {
+    if (typeof setView === "function") setView("map");
+    const node = document.getElementById("fieldMap");
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    node?.frontierReflow?.();
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const map = node?.frontierMap;
     if (!map) return JSON.stringify({ error: "no map" });
     map.setView([-72, 88], 2.2, { animate: false });
     const rect = map.getContainer().getBoundingClientRect();
     const center = map.getCenter();
     return JSON.stringify({ left: rect.left, top: rect.top, width: rect.width, height: rect.height, zoom: map.getZoom(), lat: center.lat, lng: center.lng });
   })()`,
+  awaitPromise: true,
   returnByValue: true
 });
 let gestureReport = {};

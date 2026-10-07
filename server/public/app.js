@@ -2216,6 +2216,8 @@ function mountLeafletMap(viewport, paneId) {
     }
   };
   const fitHome = () => {
+    const box = viewport.getBoundingClientRect();
+    if (box.width < 20 || box.height < 20) return false;
     fitting = true;
     map.setMinZoom(-2);
     map.invalidateSize({ animate: false });
@@ -2225,6 +2227,7 @@ function mountLeafletMap(viewport, paneId) {
     viewport._userMoved = false;
     fitting = false;
     applyDetail();
+    return true;
   };
   viewport.frontierReflow = () => {
     if (viewport._userMoved) {
@@ -2316,7 +2319,12 @@ function mountLeafletMap(viewport, paneId) {
     fly();
   });
   window.addEventListener("resize", () => viewport.frontierReflow());
-  requestAnimationFrame(() => fitHome());
+  let bootTries = 0;
+  const bootFit = () => {
+    if (fitHome() || bootTries++ > 12) return;
+    requestAnimationFrame(bootFit);
+  };
+  requestAnimationFrame(bootFit);
 }
 
 function setCoachState(stateName, detail) {
