@@ -22,11 +22,11 @@ UNIT = 10  # pixels per map unit; the frame is 176 wide by 144 tall
 WIDTH = 176 * UNIT
 HEIGHT = 144 * UNIT
 PAPER = (214, 190, 156)
-WATER = (118, 136, 140)
-COAST = (62, 84, 90)
-ROAD = (126, 96, 68)
-RAIL = (78, 62, 48)
-BORDER = (108, 86, 62)
+WATER = (132, 148, 150)
+COAST = (58, 78, 84)
+ROAD = (112, 84, 58)
+RAIL = (72, 56, 42)
+BORDER = (74, 56, 40)
 INK = (42, 26, 14)
 WATER_INK = (32, 62, 70)
 COUNTY_INK = (68, 48, 32)
@@ -143,21 +143,21 @@ def line_masks(image, water):
 
 
 def terrain(gray, land):
-    smooth = cv2.GaussianBlur(gray, (0, 0), 7)
+    smooth = cv2.GaussianBlur(gray, (0, 0), 5)
     gx = cv2.Sobel(smooth, cv2.CV_32F, 1, 0, ksize=3)
     gy = cv2.Sobel(smooth, cv2.CV_32F, 0, 1, ksize=3)
     mag = cv2.magnitude(gx, gy)
     sample = mag[land]
     if sample.size == 0:
         return np.zeros(gray.shape, dtype=bool)
-    low = np.percentile(sample, 96)
-    high = np.percentile(sample, 99.2)
+    low = np.percentile(sample, 88)
+    high = np.percentile(sample, 99.4)
     lines = (mag > low) & (mag < high) & land
     yy, xx = np.mgrid[0:gray.shape[0], 0:gray.shape[1]]
-    return lines & ((xx // 2 + yy // 2) % 5 == 0)
+    return lines & ((xx // 3 + yy // 5) % 3 == 0)
 
 
-def dotted(mask, step=14, radius=4):
+def dotted(mask, step=18, radius=6):
     dots = np.zeros(mask.shape, np.uint8)
     ys, xs = np.where(mask)
     if len(xs) == 0:
@@ -186,18 +186,27 @@ def keep_long(mask, min_extent):
     return kept
 
 
-def paint_base(water, roads, rail, borders, relief):
+def paint_base(gray, water, roads, rail, borders, relief):
     canvas = np.empty((HEIGHT, WIDTH, 3), dtype=np.uint8)
     canvas[:] = PAPER
+    land = ~water
+    tone = cv2.GaussianBlur(gray, (0, 0), 11).astype(np.int16)
+    delta = np.clip((tone - 158) // 7, -18, 8)
+    shaded = np.clip(np.array(PAPER, np.int16) + delta[:, :, None], 0, 255).astype(np.uint8)
+    canvas[land] = shaded[land]
     if relief is not None and relief.any():
-        shade = np.array([176, 154, 124], dtype=np.uint8)
-        canvas[relief] = (canvas[relief].astype(np.int16) * 4 + shade.astype(np.int16)) // 5
+        shade = np.array([168, 146, 116], dtype=np.uint8)
+        canvas[relief & land] = (canvas[relief & land].astype(np.int16) * 3 + shade.astype(np.int16)) // 4
     canvas[water] = WATER
-    coast = cv2.dilate(water.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool) & ~water
+    coast = cv2.dilate(water.astype(np.uint8), np.ones((5, 5), np.uint8)).astype(bool) & ~water
     canvas[coast] = COAST
-    canvas[cv2.dilate(roads.astype(np.uint8), np.ones((2, 2), np.uint8)).astype(bool) & ~water] = ROAD
-    canvas[cv2.dilate(rail.astype(np.uint8), np.ones((2, 2), np.uint8)).astype(bool) & ~water] = RAIL
-    canvas[dotted(borders) & ~water] = (72, 54, 36)
+    road_ink = cv2.dilate((roads & ~water).astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))).astype(bool)
+    canvas[road_ink] = ROAD
+    rail_body = cv2.dilate((rail & ~water).astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))).astype(bool)
+    yy, xx = np.indices(rail.shape)
+    dashes = rail_body & ((((xx + yy) // 8) % 2) == 0)
+    canvas[dashes] = RAIL
+    canvas[dotted(borders) & ~water] = BORDER
     return canvas
 
 
@@ -246,12 +255,18 @@ def draw_labels(canvas, level):
     return np.array(image)
 
 
-def land_bounds(water, roads, rail):
-    content = water | roads | rail
-    near = cv2.dilate(content.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11)))
-    ys, xs = np.where(near > 0)
-    if len(xs) == 0:
+def land_bounds(mask):
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(mask.astype(np.uint8), connectivity=8)
+    best = 0
+    chosen = None
+    for index in range(1, count):
+        area = int(stats[index, cv2.CC_STAT_AREA])
+        if area > best:
+            best = area
+            chosen = index
+    if chosen is None:
         return [-144, 0, 0, 176]
+    ys, xs = np.where(labels == chosen)
     pad = 8
     x0 = max(0, int(xs.min()) - pad)
     x1 = min(WIDTH - 1, int(xs.max()) + pad)
@@ -275,15 +290,18 @@ def main():
         "borders", round(float(borders.mean()), 4),
         "relief", round(float(relief.mean()), 4),
     )
-    bounds = land_bounds(water, roads, rail)
+    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    detail = paint_base(gray, water, roads, rail, borders, relief)
+    paper = np.array(PAPER, np.int16)
+    delta = np.abs(detail.astype(np.int16) - paper).sum(axis=2)
+    bounds = land_bounds(delta > 40)
     print("landBounds", bounds)
-    far_base = paint_base(water, keep_long(roads, 70), keep_long(rail, 180), borders, None)
-    detail_base = paint_base(water, roads, rail, borders, relief)
-    Image.fromarray(far_base).resize((880, 720), Image.LANCZOS).save("/tmp/rdr2tiles/art-full.jpg", quality=86)
+    far = detail
+    Image.fromarray(far).resize((880, 720), Image.LANCZOS).save("/tmp/rdr2tiles/art-full.jpg", quality=86)
+    painted = {"far": far, "mid": detail, "close": detail}
     for level in ("far", "mid", "close"):
-        painted = draw_labels(far_base if level == "far" else detail_base, level)
         out_name = f"parchment-{level}.jpg"
-        encoded = Image.fromarray(painted)
+        encoded = Image.fromarray(painted[level])
         for folder in OUT_DIRS:
             folder.mkdir(parents=True, exist_ok=True)
             encoded.save(folder / out_name, quality=88, optimize=True)

@@ -1865,6 +1865,7 @@ async function loadMap() {
     state.gazetteer = [];
   }
   rebuildMap();
+  for (const id of ["fieldMap", "hiddenMap"]) document.getElementById(id)?._drawPins?.();
 }
 
 function rebuildMap() {
@@ -2332,6 +2333,195 @@ function foundButton(id) {
 
 const MAP_FRAME = typeof L === "undefined" ? null : L.latLngBounds([-144, 0], [0, 176]);
 const ACCURACY_MAP = new URLSearchParams(location.search).get("accuracy") === "1";
+const STATE_SPAN = { AMBARINO: 52, "NEW HANOVER": 44, "WEST ELIZABETH": 40, LEMOYNE: 30, "NEW AUSTIN": 40 };
+const WATER_NAMES = new Set(["Flat Iron Lake", "San Luis River", "Lannahechee River"]);
+const TOWN_NAMES = new Set(["Colter", "Wapiti", "Valentine", "Emerald Ranch", "Strawberry", "Blackwater", "Rhodes", "Saint Denis", "Annesburg", "Van Horn Trading Post", "Lagras", "Armadillo", "Tumbleweed"]);
+let labelMeasure;
+
+function labelCatalog() {
+  return (state.gazetteer || []).map(item => {
+    const name = item.name;
+    if (STATE_SPAN[name]) return { ...item, kind: "state", priority: 4, span: STATE_SPAN[name], text: name, tracking: 0.08 };
+    if (WATER_NAMES.has(name)) return { ...item, kind: "water", priority: 2, span: name.includes("Lake") ? 26 : 20, text: name, tracking: 0.03 };
+    if (TOWN_NAMES.has(name)) {
+      const text = name === "Van Horn Trading Post" ? "VAN HORN" : name.toUpperCase();
+      return { ...item, kind: "town", priority: 1, span: 12, text, tracking: 0.05 };
+    }
+    return { ...item, kind: "county", priority: 3, span: 16, text: name, tracking: 0.015 };
+  });
+}
+
+function measureLabel(entry, fontPx) {
+  if (!labelMeasure) labelMeasure = document.createElement("canvas").getContext("2d");
+  const weight = entry.kind === "water" || entry.kind === "county" ? 600 : 700;
+  const style = entry.kind === "water" ? "italic" : "normal";
+  labelMeasure.font = `${style} ${weight} ${fontPx}px "Liberation Serif", Georgia, serif`;
+  const raw = labelMeasure.measureText(entry.text).width;
+  return {
+    w: raw + entry.tracking * fontPx * Math.max(0, entry.text.length - 1),
+    h: fontPx * 1.2
+  };
+}
+
+function layoutMapLabels(viewport) {
+  const map = viewport?.frontierMap;
+  if (!map?._loaded) return;
+  let layer = viewport.querySelector(":scope > .map-labels");
+  if (!layer) {
+    layer = document.createElement("div");
+    layer.className = "map-labels";
+    layer.setAttribute("aria-hidden", "true");
+    viewport.appendChild(layer);
+  }
+  const width = viewport.clientWidth;
+  const height = viewport.clientHeight;
+  const fit = Number.isFinite(viewport._fitZoom) ? viewport._fitZoom : map.getZoom();
+  const ratio = Math.pow(2, map.getZoom() - fit);
+  const tier = !Number.isFinite(ratio) || ratio < 1.8 ? "far" : ratio < 3.6 ? "mid" : "close";
+  if (width < 20 || height < 20) return;
+  const origin = map.latLngToContainerPoint([0, 0]);
+  const step = map.latLngToContainerPoint([0, 10]);
+  const unit = Math.hypot(step.x - origin.x, step.y - origin.y) / 10;
+  const show = entry => tier === "far" ? entry.kind === "state" : tier === "mid" ? entry.kind === "county" || entry.kind === "water" : entry.kind === "town";
+  const candidates = labelCatalog().filter(show).sort((a, b) => b.priority - a.priority || a.text.length - b.text.length);
+  const placed = [];
+  const skipped = [];
+  const frag = document.createDocumentFragment();
+  const pad = 3;
+  const seeds = [];
+  for (const entry of candidates) {
+    const point = map.latLngToContainerPoint([entry.lat, entry.lng]);
+    if (point.x < -20 || point.y < -20 || point.x > width + 20 || point.y > height + 20) {
+      skipped.push(`${entry.text}:outside`);
+      continue;
+    }
+    const cap = width * (entry.kind === "state" ? 0.4 : 0.32);
+    const fitted = Math.min(cap, entry.span * unit * 0.9) / Math.max(1, measureLabel(entry, 100).w) * 100;
+    const readable = entry.kind === "state" ? 11 : 8;
+    const font = Math.min(Math.max(fitted, readable), cap / Math.max(1, measureLabel(entry, 100).w) * 100);
+    if (font < 8) {
+      skipped.push(`${entry.text}:tiny:${fitted.toFixed(1)}`);
+      continue;
+    }
+    seeds.push({ entry, point, font });
+  }
+  const overlaps = (a, b) => a.left < b.right + 1 && a.right > b.left + 1 && a.top < b.bottom + 1 && a.bottom > b.top + 1;
+  const boxAt = (seed, font, point) => {
+    const size = measureLabel(seed.entry, font);
+    if (size.w > width - pad * 2 || size.h > height - pad * 2 || font < 8) return null;
+    const cx = Math.min(width - pad - size.w / 2, Math.max(pad + size.w / 2, point.x));
+    const cy = Math.min(height - pad - size.h / 2, Math.max(pad + size.h / 2, point.y));
+    return {
+      left: cx - size.w / 2, top: cy - size.h / 2, right: cx + size.w / 2, bottom: cy + size.h / 2,
+      cx, cy, font, kind: seed.entry.kind, priority: seed.entry.priority, name: seed.entry.text, entry: seed.entry,
+      ax: point.x, ay: point.y
+    };
+  };
+  let live = seeds.map(seed => ({ ...seed, point: { ...seed.point } }));
+  let boxes = [];
+  for (let attempt = 0; attempt < 16; attempt += 1) {
+    boxes = live.map(seed => boxAt(seed, seed.font, seed.point)).filter(Boolean);
+    let moved = false;
+    for (let i = 0; i < boxes.length; i += 1) {
+      for (let j = i + 1; j < boxes.length; j += 1) {
+        const a = boxes[i];
+        const b = boxes[j];
+        if (!overlaps(a, b)) continue;
+        const dx = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        const dy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        const sx = a.cx <= b.cx ? -1 : 1;
+        const sy = a.cy <= b.cy ? -1 : 1;
+        const targetA = live.find(seed => seed.entry === a.entry);
+        const targetB = live.find(seed => seed.entry === b.entry);
+        if (dx < dy) {
+          targetA.point.x += sx * (dx / 2 + 1);
+          targetB.point.x -= sx * (dx / 2 + 1);
+        } else {
+          targetA.point.y += sy * (dy / 2 + 1);
+          targetB.point.y -= sy * (dy / 2 + 1);
+        }
+        moved = true;
+      }
+    }
+    if (!moved && boxes.length === live.length) break;
+    if (!moved) {
+      const smallest = [...live].sort((a, b) => a.font - b.font || b.entry.text.length - a.entry.text.length)[0];
+      skipped.push(`${smallest.entry.text}:collision`);
+      live = live.filter(seed => seed !== smallest);
+      continue;
+    }
+    if (attempt >= 8) live.forEach(seed => { seed.font = Math.max(8, seed.font * 0.92); });
+  }
+  const keep = [];
+  for (const box of boxes.sort((a, b) => b.priority - a.priority || a.name.length - b.name.length)) {
+    if (keep.some(other => overlaps(box, other))) {
+      skipped.push(`${box.name}:collision`);
+      continue;
+    }
+    keep.push(box);
+  }
+  for (const chosen of keep) {
+    placed.push(chosen);
+    const node = document.createElement("div");
+    node.className = `map-label kind-${chosen.kind}`;
+    node.textContent = chosen.name;
+    node.style.left = `${chosen.cx}px`;
+    node.style.top = `${chosen.cy}px`;
+    node.style.fontSize = `${chosen.font.toFixed(2)}px`;
+    node.style.letterSpacing = `${chosen.entry.tracking}em`;
+    frag.appendChild(node);
+  }
+  layer.replaceChildren(frag);
+  viewport._labelSkips = skipped;
+  viewport._labelBoxes = placed
+    .filter(box => box.kind === "state" || box.kind === "county")
+    .map(box => ({ left: box.left, top: box.top, right: box.right, bottom: box.bottom }));
+}
+
+function avoidLabelBoxes(map, lat, lng, boxes, clearance = 16) {
+  if (!boxes?.length) return [lat, lng];
+  let point = map.latLngToContainerPoint([lat, lng]);
+  for (let pass = 0; pass < 5; pass += 1) {
+    const hit = boxes.find(box => point.x + clearance > box.left && point.x - clearance < box.right && point.y + clearance > box.top && point.y - clearance < box.bottom);
+    if (!hit) break;
+    const spots = [
+      { x: point.x, y: hit.bottom + clearance },
+      { x: point.x, y: hit.top - clearance },
+      { x: hit.right + clearance, y: point.y },
+      { x: hit.left - clearance, y: point.y }
+    ];
+    spots.sort((a, b) => (a.x - point.x) ** 2 + (a.y - point.y) ** 2 - ((b.x - point.x) ** 2 + (b.y - point.y) ** 2));
+    point = spots[0];
+  }
+  const next = map.containerPointToLatLng(point);
+  return [next.lat, next.lng];
+}
+
+function auditMapLabels(rootId = "fieldMap") {
+  const viewport = document.getElementById(rootId);
+  const labels = [...(viewport?.querySelectorAll(".map-label") || [])].map(node => {
+    const rect = node.getBoundingClientRect();
+    const view = viewport.getBoundingClientRect();
+    return {
+      name: node.textContent,
+      left: rect.left,
+      top: rect.top,
+      right: rect.right,
+      bottom: rect.bottom,
+      clipped: rect.left < view.left - 1 || rect.right > view.right + 1 || rect.top < view.top - 1 || rect.bottom > view.bottom + 1
+    };
+  });
+  const overlaps = [];
+  for (let i = 0; i < labels.length; i += 1) {
+    for (let j = i + 1; j < labels.length; j += 1) {
+      const a = labels[i];
+      const b = labels[j];
+      if (a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1) overlaps.push([a.name, b.name]);
+    }
+  }
+  return { overlaps, clipped: labels.filter(item => item.clipped).map(item => item.name), count: labels.length, names: labels.map(item => item.name) };
+}
+window.auditMapLabels = auditMapLabels;
 
 function paintLeaflet(viewport, items, activeId, onSelect) {
   if (!viewport) return;
@@ -2381,6 +2571,8 @@ function drawPins(viewport) {
     });
     layer.addLayer(marker);
   };
+  layoutMapLabels(viewport);
+  const labelBoxes = detail === "close" ? [] : (viewport._labelBoxes || []);
   if (detail !== "close") {
     const groups = new Map();
     for (const item of items) {
@@ -2392,19 +2584,21 @@ function drawPins(viewport) {
     }
     for (const group of groups.values()) {
       if (group.length === 1 && detail !== "far") {
-        addIcon(group[0], group[0].lat, group[0].lng);
+        const [lat, lng] = avoidLabelBoxes(map, group[0].lat, group[0].lng, labelBoxes, 16);
+        addIcon(group[0], lat, lng);
         continue;
       }
       if (group.length === 1) {
         const item = group[0];
         const style = styleFor(item.category);
+        const [lat, lng] = avoidLabelBoxes(map, item.lat, item.lng, labelBoxes, 10);
         const icon = L.divIcon({
           className: "map-dot",
           html: "",
           iconSize: [9, 9],
           iconAnchor: [4, 4]
         });
-        const marker = L.marker([item.lat, item.lng], { icon, pane: "pins", keyboard: false, bubblingMouseEvents: false });
+        const marker = L.marker([lat, lng], { icon, pane: "pins", keyboard: false, bubblingMouseEvents: false });
         marker.on("click", event => {
           if (event.originalEvent) event.originalEvent.stopPropagation();
           onSelect(item);
@@ -2420,13 +2614,14 @@ function drawPins(viewport) {
         layer.addLayer(marker);
         continue;
       }
-      const lat = group.reduce((sum, item) => sum + item.lat, 0) / group.length;
-      const lng = group.reduce((sum, item) => sum + item.lng, 0) / group.length;
+      const rawLat = group.reduce((sum, item) => sum + item.lat, 0) / group.length;
+      const rawLng = group.reduce((sum, item) => sum + item.lng, 0) / group.length;
+      const size = group.length > 12 ? 30 : 26;
+      const [lat, lng] = avoidLabelBoxes(map, rawLat, rawLng, labelBoxes, size / 2 + 4);
       const counts = new Map();
       for (const item of group) counts.set(item.category, (counts.get(item.category) || 0) + 1);
       const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
       const style = styleFor(top);
-      const size = group.length > 12 ? 30 : 26;
       const icon = L.divIcon({
         className: "map-cluster",
         html: String(group.length),
@@ -2454,6 +2649,43 @@ function drawPins(viewport) {
   }
   layer.addTo(map);
   map._pinLayer = layer;
+  nudgePinsOffLabels(map, viewport);
+}
+
+function nudgePinsOffLabels(map, viewport) {
+  if (viewport.dataset.detail === "close" || !map._pinLayer) return;
+  const origin = viewport.getBoundingClientRect();
+  const labelBoxes = () => [...viewport.querySelectorAll(".map-label")]
+    .filter(node => node.classList.contains("kind-state") || node.classList.contains("kind-county"))
+    .map(node => {
+      const rect = node.getBoundingClientRect();
+      return { left: rect.left - origin.left, top: rect.top - origin.top, right: rect.right - origin.left, bottom: rect.bottom - origin.top };
+    });
+  for (const marker of map._pinLayer.getLayers()) {
+    const element = marker.getElement();
+    if (!element) continue;
+    for (let pass = 0; pass < 6; pass += 1) {
+      const boxes = labelBoxes();
+      const rect = element.getBoundingClientRect();
+      const left = rect.left - origin.left;
+      const top = rect.top - origin.top;
+      const right = left + rect.width;
+      const bottom = top + rect.height;
+      const hit = boxes.find(box => left < box.right - 1 && right > box.left + 1 && top < box.bottom - 1 && bottom > box.top + 1);
+      if (!hit) break;
+      const cx = (left + right) / 2;
+      const cy = (top + bottom) / 2;
+      const anchor = map.latLngToContainerPoint(marker.getLatLng());
+      const spots = [
+        { x: cx, y: hit.top - rect.height / 2 - 5 },
+        { x: cx, y: hit.bottom + rect.height / 2 + 5 },
+        { x: hit.left - rect.width / 2 - 5, y: cy },
+        { x: hit.right + rect.width / 2 + 5, y: cy }
+      ];
+      spots.sort((a, b) => (a.x - cx) ** 2 + (a.y - cy) ** 2 - ((b.x - cx) ** 2 + (b.y - cy) ** 2));
+      marker.setLatLng(map.containerPointToLatLng([spots[0].x + (anchor.x - cx), spots[0].y + (anchor.y - cy)]));
+    }
+  }
 }
 
 function mountLeafletMap(viewport, paneId) {
@@ -2517,7 +2749,8 @@ function mountLeafletMap(viewport, paneId) {
     map.setMinZoom(-2);
     map.invalidateSize({ animate: false });
     const home = viewport._landBounds?.isValid?.() ? viewport._landBounds : MAP_FRAME;
-    map.fitBounds(home, { animate: false, padding: [0, 0] });
+    map.setMaxBounds(home.pad(0.04));
+    map.fitBounds(home, { animate: false, padding: [1, 1] });
     viewport._fitZoom = map.getZoom();
     map.setMinZoom(viewport._fitZoom);
     viewport._userMoved = false;
@@ -2548,6 +2781,7 @@ function mountLeafletMap(viewport, paneId) {
   map.on("zoom move", () => {
     if (!fitting) viewport._userMoved = true;
     applyDetail();
+    layoutMapLabels(viewport);
   });
   map.on("moveend", () => {
     if (!fitting && viewport.dataset.detail !== "close") viewport._drawPins?.();
