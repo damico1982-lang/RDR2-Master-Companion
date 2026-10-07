@@ -2204,9 +2204,9 @@ function mountLeafletMap(viewport, paneId) {
   }
   let fitting = false;
   const applyDetail = () => {
-    const fit = viewport._fitZoom ?? map.getZoom();
+    const fit = Number.isFinite(viewport._fitZoom) ? viewport._fitZoom : map.getZoom();
     const ratio = Math.pow(2, map.getZoom() - fit);
-    const detail = ratio < 1.8 ? "far" : ratio < 3.6 ? "mid" : "close";
+    const detail = !Number.isFinite(ratio) || ratio < 1.8 ? "far" : ratio < 3.6 ? "mid" : "close";
     viewport.dataset.scale = ratio.toFixed(3);
     viewport.dataset.detail = detail;
     if (!ACCURACY_MAP) {
@@ -2238,8 +2238,9 @@ function mountLeafletMap(viewport, paneId) {
     fitHome();
   };
   viewport.frontierZoomTo = (nextScale, xPercent, yPercent) => {
+    if (!Number.isFinite(viewport._fitZoom) && !fitHome()) return;
     const ratio = Math.max(0.2, Number(nextScale) || 1);
-    const fit = viewport._fitZoom ?? map.getZoom();
+    const fit = viewport._fitZoom;
     const zoom = Math.min(map.getMaxZoom(), Math.max(map.getMinZoom(), fit + Math.log2(ratio)));
     const lat = Number.isFinite(Number(yPercent)) ? -144 * (Number(yPercent) / 100) : -72;
     const lng = Number.isFinite(Number(xPercent)) ? 176 * (Number(xPercent) / 100) : 88;

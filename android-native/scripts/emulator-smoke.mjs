@@ -468,15 +468,14 @@ async function mapShot(name, elementId, scale, x, y, detailName) {
     returnByValue: true
   });
   let reported = "";
-  let transform = "";
+  let parsed = {};
   try {
-    const parsed = JSON.parse(detail?.result?.value || "{}");
+    parsed = JSON.parse(detail?.result?.value || "{}");
     reported = parsed.detail || "";
-    transform = parsed.transform || "";
   } catch {
     reported = String(detail?.result?.value || "");
   }
-  console.log(name, reported, transform);
+  console.log(name, JSON.stringify(parsed));
   if (reported !== detailName) problems.push(`${name} detail ${reported}`);
   await delay(1600);
   const captured = await send("Page.captureScreenshot", { format: "png" }).catch(() => null);
