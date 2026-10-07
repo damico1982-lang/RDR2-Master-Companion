@@ -2166,6 +2166,21 @@ function reconcileModeSelection() {
   }
 }
 
+const MAP_GAZETTEER = [
+  ["Ambarino", 63.8, 11.5], ["New Hanover", 67.4, 38], ["West Elizabeth", 42.2, 42.8],
+  ["Lemoyne", 79.2, 65.2], ["New Austin", 22.1, 84.9], ["Grizzlies West", 54, 17.7],
+  ["Grizzlies East", 77.2, 15.6], ["Cumberland Forest", 53.5, 32.6], ["Heartlands", 63.3, 46.2],
+  ["Roanoke Ridge", 85.9, 27.9], ["Scarlett Meadows", 71, 43.5], ["Bayou Nwa", 77.2, 53.7],
+  ["Bluewater Marsh", 86.9, 36.7], ["Big Valley", 45.8, 50.3], ["Tall Trees", 38.6, 58.4],
+  ["Great Plains", 46.8, 63.9], ["Hennigan's Stead", 38.6, 75.4], ["Cholla Springs", 26.7, 76.8],
+  ["Rio Bravo", 18.5, 89], ["Gaptooth Ridge", 9.8, 79.5], ["Colter", 55, 13.6], ["Wapiti", 70, 21.7],
+  ["Valentine", 57.1, 34], ["Emerald Ranch", 71.5, 41.4], ["Strawberry", 39.6, 53.7],
+  ["Blackwater", 43.2, 67.3], ["Rhodes", 73.6, 52.3], ["Saint Denis", 85.4, 63.2],
+  ["Annesburg", 81.8, 22.4], ["Van Horn Trading Post", 88, 33.3], ["Van Horn", 88, 33.3],
+  ["Armadillo", 29.8, 78.1], ["Tumbleweed", 10.8, 80.8], ["Flat Iron Lake", 67.4, 59.8],
+  ["San Luis River", 25.2, 87.6], ["Lannahechee River", 93.1, 51.6]
+].map(([name, x, y]) => ({ name: name.toLowerCase(), x, y }));
+
 function mountSchematicMap(viewport, onZoom) {
   if (!viewport || viewport.dataset.zoomReady) return;
   viewport.dataset.zoomReady = "1";
@@ -2335,13 +2350,15 @@ function mountSchematicMap(viewport, onZoom) {
       const on = frame.classList.toggle("is-turned");
       orient.setAttribute("aria-pressed", on ? "true" : "false");
       orient.textContent = on ? "Portrait" : "Landscape";
+      fitted = false;
+      scale = 1;
+      viewport.frontierReflow?.();
       try {
         if (on && screen.orientation?.lock) await screen.orientation.lock("landscape");
         else screen.orientation?.unlock?.();
       } catch {}
       fitted = false;
-      scale = 1;
-      requestAnimationFrame(() => viewport.frontierReflow?.());
+      viewport.frontierReflow?.();
     });
   }
   const search = frame?.querySelector(".map-search-input");
@@ -2355,15 +2372,30 @@ function mountSchematicMap(viewport, onZoom) {
         ? state.hiddenPlaces.filter(modeMatches)
         : state.mapLocations.filter(modeMatches);
       const label = item => `${item.title || ""} ${item.name || ""}`.toLowerCase();
+      const place = MAP_GAZETTEER.find(entry => entry.name === query)
+        || MAP_GAZETTEER.find(entry => entry.name.startsWith(query))
+        || MAP_GAZETTEER.find(entry => entry.name.includes(query));
       const item = pool.find(entry => label(entry) === query)
         || pool.find(entry => label(entry).startsWith(query))
-        || pool.find(entry => `${label(entry)} ${(entry.region || "").toLowerCase()} ${(entry.category || "").toLowerCase()}`.includes(query));
-      if (!item) {
-        search.setCustomValidity("No matching place");
-        search.reportValidity();
+        || pool.find(entry => label(entry).includes(query));
+      if (!item && !place) {
+        const regional = pool.find(entry => `${label(entry)} ${(entry.region || "").toLowerCase()}`.includes(query));
+        if (!regional) {
+          search.setCustomValidity("No matching place");
+          search.reportValidity();
+          return;
+        }
+        search.setCustomValidity("");
+        if (hidden) showHiddenDetail(regional);
+        else showMapDetail(regional);
+        viewport.frontierZoomTo(4.2, regional.x, regional.y);
         return;
       }
       search.setCustomValidity("");
+      if (place && !item) {
+        viewport.frontierZoomTo(3.4, place.x, place.y);
+        return;
+      }
       if (hidden) {
         if (state.hiddenCategory !== "All" && item.category !== state.hiddenCategory) {
           state.hiddenCategory = "All";
