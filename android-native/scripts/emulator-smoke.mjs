@@ -342,6 +342,33 @@ async function openPage() {
   };
 }
 
+async function reconnectDevtools() {
+  try { ws?.close(); } catch { /* already closed */ }
+  ws = null;
+  for (const waiter of pending.values()) {
+    clearTimeout(waiter.timer);
+    waiter.reject(new Error("DevTools reconnect"));
+  }
+  pending.clear();
+  adb("forward", "--remove-all");
+  adb("forward", "tcp:9222", `localabstract:${socketName}`);
+  await delay(400);
+  page = await devtoolsJson();
+  await openPage();
+  await send("Runtime.enable");
+  await send("Console.enable").catch(() => {});
+}
+
+async function sendRetry(method, params = {}, timeoutMs = 30000) {
+  try {
+    return await send(method, params, timeoutMs);
+  } catch (error) {
+    console.log(`devtools retry after ${error.message}`);
+    await reconnectDevtools();
+    return await send(method, params, timeoutMs);
+  }
+}
+
 await openPage();
 try {
   await send("Runtime.enable");
@@ -432,7 +459,7 @@ function shot(name) {
   writeFileSync(`emulator-screenshots/${name}.png`, result.stdout);
 }
 async function show(view) {
-  await send("Runtime.evaluate", {
+  await sendRetry("Runtime.evaluate", {
     expression: `(() => {
       const view = ${JSON.stringify(view)};
       if (typeof setView === "function") {
@@ -679,8 +706,12 @@ for (const [name, lat, lng] of places) {
   shot(`accuracy-part-${name}`);
 }
 await mapShot("hidden-zoom-mid", "hiddenMap", 2.5, 55, 41, "mid");
+await sendRetry("Runtime.evaluate", {
+  expression: `(() => { window.frontierShowAccuracy?.(false); if (typeof setView === "function") setView("map"); return "tiles-off"; })()`,
+  returnByValue: true
+});
 
-const gestureStart = await send("Runtime.evaluate", {
+const gestureStart = await sendRetry("Runtime.evaluate", {
   expression: `(async () => {
     if (typeof setView === "function") setView("map");
     const node = document.getElementById("fieldMap");
@@ -689,14 +720,16 @@ const gestureStart = await send("Runtime.evaluate", {
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const map = node?.frontierMap;
     if (!map) return JSON.stringify({ error: "no map" });
-    map.setView([-72, 88], 2.2, { animate: false });
+    map.touchZoom?.enable?.();
+    const zoom = map.getMinZoom() + 1;
+    map.setView([-72, 88], zoom, { animate: false });
     const rect = map.getContainer().getBoundingClientRect();
     const center = map.getCenter();
-    return JSON.stringify({ left: rect.left, top: rect.top, width: rect.width, height: rect.height, zoom: map.getZoom(), lat: center.lat, lng: center.lng });
+    return JSON.stringify({ left: rect.left, top: rect.top, width: rect.width, height: rect.height, zoom: map.getZoom(), lat: center.lat, lng: center.lng, touch: Boolean(map.touchZoom?.enabled?.()) });
   })()`,
   awaitPromise: true,
   returnByValue: true
-});
+}, 45000);
 let gestureReport = {};
 try { gestureReport = JSON.parse(gestureStart?.result?.value || "{}"); } catch { gestureReport = { error: "parse" }; }
 if (!gestureReport.error && gestureReport.width) {
@@ -710,10 +743,13 @@ if (!gestureReport.error && gestureReport.width) {
   await delay(200);
   const cx = gestureReport.left + gestureReport.width / 2;
   const cy = gestureReport.top + gestureReport.height / 2;
-  await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: cx - 28, y: cy, id: 1 }, { x: cx + 28, y: cy, id: 2 }] });
-  await delay(50);
-  await send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: cx - 96, y: cy, id: 1 }, { x: cx + 96, y: cy, id: 2 }] });
-  await delay(50);
+  await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: cx - 24, y: cy, id: 1 }, { x: cx + 24, y: cy, id: 2 }] });
+  for (let step = 1; step <= 6; step += 1) {
+    const spread = 24 + step * 22;
+    await delay(60);
+    await send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: cx - spread, y: cy, id: 1 }, { x: cx + spread, y: cy, id: 2 }] });
+  }
+  await delay(80);
   await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   await delay(200);
   await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: cx, y: cy, id: 1 }] });
@@ -749,18 +785,19 @@ try { healthReport = JSON.parse(health?.result?.value || "{}"); } catch { health
 console.log("health", JSON.stringify(healthReport));
 if (healthReport.body?.authorized !== true) problems.push(`production health was not authorized: ${JSON.stringify(healthReport)}`);
 
+await reconnectDevtools();
 await show("ask");
-await send("Runtime.evaluate", {
+await sendRetry("Runtime.evaluate", {
   expression: `(() => { document.getElementById("question").value = "Where is the White Arabian? One sentence."; document.getElementById("askForm").requestSubmit(); return "sent"; })()`,
   returnByValue: true
-});
+}, 45000);
 let liveAnswer = "";
 for (let attempt = 0; attempt < 24; attempt += 1) {
   await delay(3000);
-  const current = await send("Runtime.evaluate", {
+  const current = await sendRetry("Runtime.evaluate", {
     expression: `(() => { const nodes = [...document.querySelectorAll("#chat .message.assistant p")]; return nodes.at(-1)?.innerText || ""; })()`,
     returnByValue: true
-  });
+  }, 45000);
   liveAnswer = current?.result?.value || "";
   if (liveAnswer && !liveAnswer.startsWith("Thinking")) break;
 }
