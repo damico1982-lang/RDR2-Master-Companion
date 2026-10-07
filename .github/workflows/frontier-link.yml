@@ -1,0 +1,49 @@
+name: Frontier Link
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'frontier-link/**'
+      - '.github/workflows/frontier-link.yml'
+  pull_request:
+    paths:
+      - 'frontier-link/**'
+      - '.github/workflows/frontier-link.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Test the helper core
+        run: dotnet test frontier-link/FrontierLink.Core.Tests -c Release
+      - name: Refuse process tampering
+        shell: bash
+        run: |
+          if grep -R -n -E "ReadProcessMemory|WriteProcessMemory|CreateRemoteThread|OpenProcess|NtReadVirtualMemory|VirtualAllocEx" frontier-link --include='*.cs'; then
+            echo "Frontier Link must not touch the game process."
+            exit 1
+          fi
+
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build the single-file helper
+        run: dotnet publish frontier-link/FrontierLink.App/FrontierLink.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o frontier-link/publish
+      - name: Name the release asset
+        shell: pwsh
+        run: Rename-Item frontier-link/publish/FrontierLink.exe FrontierLink-Setup.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FrontierLink-Setup
+          path: frontier-link/publish/FrontierLink-Setup.exe

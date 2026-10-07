@@ -835,6 +835,14 @@ video,
   .quick { min-height: 118px; }
 }
 
+.progress-summary { margin: 0 0 12px; padding: 14px 16px; border: 1px solid rgba(92, 64, 40, .35); border-radius: 8px; background: #efe2cc; color: #2a2118; }
+.progress-summary p { margin: 0 0 6px; }
+.progress-row { display: flex; gap: 12px; align-items: center; }
+.progress-row img { width: 48px; height: 48px; object-fit: cover; border-radius: 4px; background: #2a2118; }
+.progress-row.is-locked { opacity: .72; }
+.link-code { margin: 8px 0; color: #2a2118; font: 700 36px/1 Georgia, "Times New Roman", serif; letter-spacing: .18em; }
+.link-qr { display: block; width: 180px; height: 180px; margin: 8px 0; background: #fff; }
+
 @media (min-width: 900px) {
   .quick-grid { grid-template-columns: repeat(4, 1fr); }
   .quick { min-height: 140px; grid-template-columns: 44px 1fr; align-content: center; }

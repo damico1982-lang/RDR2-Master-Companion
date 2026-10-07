@@ -454,6 +454,39 @@ for (const view of ["ask", "voice", "guide", "legendary", "animals", "secrets", 
   await show(view);
 }
 
+const progressText = await send("Runtime.evaluate", {
+  expression: `(() => {
+    const data = {
+      hoursPlayed: 42.5,
+      percent: 11.8,
+      unlocked: 6,
+      total: 51,
+      fetchedAt: "2026-01-02T00:00:00.000Z",
+      achievements: [{
+        apiName: "ACH_BACK_IN_THE_MUD",
+        name: "Back in the Mud",
+        description: "Complete Chapter 1",
+        unlocked: true,
+        unlockTime: 1609459200,
+        icon: ""
+      }]
+    };
+    localStorage.setItem("fg_steam_progress", JSON.stringify(data));
+    localStorage.setItem("fg_server_mode", "offline");
+    if (typeof setView === "function") setView("progress");
+    else if (typeof renderSteamProgress === "function") renderSteamProgress(data);
+    return document.getElementById("progressView")?.innerText || "";
+  })()`,
+  returnByValue: true
+});
+const progressBody = String(progressText?.result?.value || "");
+console.log("progress", progressBody.slice(0, 240));
+if (!progressBody.includes("Back in the Mud") || !progressBody.includes("42.5")) {
+  problems.push(`progress screen did not show mock Steam data: ${progressBody.slice(0, 180)}`);
+}
+await delay(400);
+shot("progress");
+
 await send("Page.enable").catch(() => {});
 async function mapShot(name, elementId, scale, x, y, detailName) {
   const detail = await send("Runtime.evaluate", {

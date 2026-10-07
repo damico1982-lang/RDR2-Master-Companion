@@ -64,11 +64,15 @@ test("GET /api/health stays public for Render and reports readiness", async () =
       model: "gpt-6-luna",
       authRequired: true,
       authorized: false,
-      version: "1.6.1",
+      version: "1.7.0",
       tts: {
         enabled: true,
         model: "gpt-4o-mini-tts",
         voice: "onyx"
+      },
+      steam: {
+        configured: false,
+        appId: 1174180
       }
     });
 
@@ -96,7 +100,7 @@ test("GET / serves the installable Frontier Guide web app", async () => {
 
     const api = await fetch(`${baseUrl}/api`);
     assert.equal(api.status, 200);
-    assert.deepEqual((await api.json()).endpoints, ["/api/health", "/api/ask", "/api/speak", "/api/coach", "/api/live-update"]);
+    assert.deepEqual((await api.json()).endpoints, ["/api/health", "/api/ask", "/api/speak", "/api/coach", "/api/live-update", "/api/steam/progress", "/api/link/pair"]);
   });
 });
 

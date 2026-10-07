@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>FrontierLink</AssemblyName>
+    <RootNamespace>FrontierLink</RootNamespace>
+    <Version>1.7.0</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\FrontierLink.Core\FrontierLink.Core.csproj" />
+    <EmbeddedResource Include="catalog.json">
+      <LogicalName>FrontierLink.catalog.json</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+</Project>
