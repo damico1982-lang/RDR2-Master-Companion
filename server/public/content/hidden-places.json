@@ -61,8 +61,8 @@
     "enter": "This cave is the setting of the epilogue mission American Venom. This guide does not claim a free-roam treasure route into it before that mission.",
     "contents": "The cave camp used for the story's last mission. The reward is the mission itself, not a listed lockbox.",
     "confirmed": true,
-    "x": 30.1,
-    "y": 60.5
+    "x": 30.7,
+    "y": 61.2
   },
   {
     "id": "elysian-mine",
@@ -152,8 +152,8 @@
     "enter": "Ride north of Cumberland Forest to Window Rock and walk under the overhang.",
     "contents": "A rock painting that hints the Strange Statues puzzle. Inspect it so the drawing is added to the journal. The gold bars are in the statue cave, not here.",
     "confirmed": true,
-    "x": 60.9,
-    "y": 16.6
+    "x": 61.1,
+    "y": 17.2
   },
   {
     "id": "granite-pass",

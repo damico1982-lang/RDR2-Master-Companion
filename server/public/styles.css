@@ -491,7 +491,7 @@ a:focus-visible {
   align-items: center;
   justify-content: center;
   margin: 0;
-  background: #d8c39c;
+  background: #d2b895;
 }
 .map-chrome {
   position: absolute;
@@ -524,17 +524,18 @@ a:focus-visible {
 .field-map {
   position: relative;
   width: 100%;
-  aspect-ratio: 1400 / 1060;
+  aspect-ratio: 3888 / 2944;
   overflow: hidden;
   border: 1px solid #6e5436;
   border-radius: 0;
-  background: #d8c39c;
+  background: #d2b895;
   box-shadow: inset 0 0 28px rgba(92, 64, 36, .08);
   touch-action: none;
+  container-type: inline-size;
 }
 .map-frame.is-expanded .field-map {
-  width: min(100vw, calc(100dvh * 1400 / 1060));
-  height: min(100dvh, calc(100vw * 1060 / 1400));
+  width: min(100vw, calc(100dvh * 3888 / 2944));
+  height: min(100dvh, calc(100vw * 2944 / 3888));
   flex: 0 0 auto;
   border: 0;
   aspect-ratio: auto;
@@ -551,19 +552,14 @@ a:focus-visible {
 .field-map[data-detail="far"] .layer-mid,
 .field-map[data-detail="far"] .layer-close { display: none; }
 .field-map[data-detail="mid"] .layer-close { display: none; }
-.field-map[data-detail="close"] .region-label { font-size: 9px; opacity: .28; }
-.region-label { font-family: Georgia, "Times New Roman", serif; font-size: 13px; letter-spacing: .42em; fill: #6a5642; font-weight: 500; }
-.region-label.region-narrow { font-size: 9px; letter-spacing: .16em; }
-.field-map[data-detail="mid"] .region-label { font-size: 11px; opacity: .55; }
-.field-map[data-detail="mid"] .region-label.region-narrow { font-size: 8px; }
-.town-label, .water-label, .creek, .subregion-label { font-family: Georgia, "Times New Roman", serif; stroke: none; }
-.town-label { font-size: 8px; fill: #4e4034; letter-spacing: .14em; }
-.field-map[data-detail="mid"] .town-label { font-size: 8px; }
-.field-map[data-detail="close"] .town-label { font-size: 7px; }
-.water-label { font-size: 9px; fill: #5c5952; letter-spacing: .2em; }
-.creek { font-size: 8px; fill: #5c564c; letter-spacing: .14em; }
-.subregion-label { font-size: 8px; fill: #6a543c; letter-spacing: .14em; }
-.field-map[data-detail="close"] .subregion-label { font-size: 7px; }
+.field-map[data-detail="close"] .region-label { opacity: .45; }
+.region-label { font-family: "Liberation Serif", Georgia, "Times New Roman", serif; fill: #5a4636; font-weight: 500; }
+.field-map[data-detail="mid"] .region-label { opacity: .72; }
+.town-label, .water-label, .creek, .subregion-label { font-family: "Liberation Serif", Georgia, "Times New Roman", serif; stroke: none; }
+.town-label { fill: #4a3c30; }
+.water-label { fill: #5c564c; }
+.creek { fill: #5c564c; }
+.subregion-label { fill: #6a543c; }
 .map-legend { display: flex; flex-direction: column; gap: 1px; width: 100%; max-height: 220px; margin-top: 6px; overflow: auto; }
 .legend-item { width: 100%; border: 0; padding: 3px 2px; color: #3c2c1e; background: transparent; font: 700 11px/1.3 Georgia, "Times New Roman", serif; text-align: left; }
 .map-art { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
@@ -587,19 +583,22 @@ a:focus-visible {
   position: absolute;
   z-index: 3;
   display: grid;
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  width: 2.35cqw;
+  height: 18px;
+  height: 2.35cqw;
   place-items: center;
   border: 1.5px solid #1c1915;
   border-radius: 50%;
   padding: 0;
-  color: #1a1612;
+  color: #111;
   background: #fff;
   box-shadow: 0 1px 2px rgba(40, 24, 12, .35);
-  font: 700 10px/1 Georgia, "Times New Roman", serif;
+  font: 800 9px/1 "Liberation Serif", Georgia, "Times New Roman", serif;
+  font-size: 1.15cqw;
   transform: translate(-50%, -50%);
 }
-.map-marker.cluster { width: 26px; height: 26px; background: #fff; color: #1a1612; border-color: #1c1915; font-size: 11px; }
+.map-marker.cluster { width: 18px; width: 2.35cqw; height: 18px; height: 2.35cqw; background: #fff; color: #111; border-color: #1c1915; font-size: 9px; font-size: 1.05cqw; }
 .map-marker.active { box-shadow: 0 0 0 3px rgba(90, 60, 30, .45); }
 .map-marker.found { border-color: #1f6b3a; box-shadow: inset 0 0 0 1.5px #1f6b3a; }
 .map-marker.legendary { border-color: #1e5c3d; }
@@ -609,7 +608,7 @@ a:focus-visible {
 .map-marker.mine { border-color: #5c5348; }
 .map-marker.underground { border-color: #3e3558; }
 .map-marker.mountain { border-color: #6e3b32; }
-.field-map[data-detail="close"] .map-marker:not(.cluster) { width: 24px; height: 24px; }
+.field-map[data-detail="close"] .map-marker:not(.cluster) { width: 1.6cqw; height: 1.6cqw; font-size: 0.78cqw; }
 .map-marker,
 .map-marker.cluster,
 .map-marker.legendary,

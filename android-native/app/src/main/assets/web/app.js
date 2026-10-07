@@ -2027,7 +2027,7 @@ function groupPins(items, scale) {
     }));
   }
   const far = scale < 1.8;
-  const threshold = far ? 14 : 6;
+  const threshold = far ? 7 : 4.5;
   const groups = [];
   for (const item of items) {
     const x = Number(item.x);

@@ -90,8 +90,8 @@
     "weapon": "Rifle or a poison arrow. Pelt quality is not graded on the legendary.",
     "ammo": "Rifle rounds, or one poison arrow.",
     "reward": "Buck Antler Trinket at a Fence: skinned animals are more likely to keep a higher pelt quality. IGN lists $22. This is the trinket that helps ordinary 3-star pelts. The legendary pelt is also used for unique Trapper clothing.",
-    "x": 32.3,
-    "y": 42.7,
+    "x": 36.7,
+    "y": 48.9,
     "mode": "story",
     "confirmed": true
   },
@@ -186,8 +186,8 @@
     "weapon": "Rifle with express rounds. It closes distance fast. Pelt quality is not graded.",
     "ammo": "Express rifle rounds.",
     "reward": "Panther's Eye Trinket at a Fence: Dead Eye drains about 10% slower for 3 seconds. IGN lists $25. The pelt is used for unique Trapper clothing.",
-    "x": 77.9,
-    "y": 79.7,
+    "x": 74.9,
+    "y": 73.8,
     "mode": "story",
     "confirmed": true
   },
@@ -234,8 +234,8 @@
     "weapon": "Rifle with express rounds. Pelt quality is not graded.",
     "ammo": "Express rifle rounds.",
     "reward": "Bison Horn Talisman at a Fence: Stamina core drains about 10% slower. It also takes an Abalone Shell Fragment and a Silver Earring. IGN lists $38.50. This is the White Bison reward, not the Tatanka trinket. The pelt is used for unique Trapper clothing.",
-    "x": 53.7,
-    "y": 14.4,
+    "x": 53.1,
+    "y": 14.2,
     "mode": "story",
     "confirmed": true
   },
