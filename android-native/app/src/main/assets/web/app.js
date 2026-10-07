@@ -2341,7 +2341,7 @@ function paintLeaflet(viewport, items, activeId, onSelect) {
 
 function drawPins(viewport) {
   const map = viewport?.frontierMap;
-  if (!map || !viewport._pinItems) return;
+  if (!map || !viewport._pinItems || !map._loaded) return;
   if (map._pinLayer) map.removeLayer(map._pinLayer);
   const items = viewport._pinItems;
   const activeId = viewport._pinActive;
