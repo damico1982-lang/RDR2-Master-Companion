@@ -1,5 +1,5 @@
-const CACHE = "frontier-guide-v27";
-const ASSETS = ["./","index.html","styles.css","app.js","frontier-session.js","frontier-map.svg","vendor/leaflet.js","vendor/leaflet.css","manifest.webmanifest","icon.svg","content/guide.json","content/map.json","content/gazetteer.json","content/land-bounds.json","content/parchment-far.jpg","content/parchment-mid.jpg","content/parchment-close.jpg","content/legendaries.json","content/animals.json","content/secrets.json","content/hidden-places.json"];
+const CACHE = "frontier-guide-v32";
+const ASSETS = ["./","index.html","styles.css","app.js","frontier-session.js","frontier-map.svg","vendor/leaflet.js","vendor/leaflet.css","manifest.webmanifest","icon.svg","content/guide.json","content/map.json","content/gazetteer.json","content/land-bounds.json","content/map-lines.json","content/parchment-far.jpg","content/parchment-mid.jpg","content/parchment-close.jpg","content/legendaries.json","content/animals.json","content/secrets.json","content/hidden-places.json"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)));

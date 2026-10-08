@@ -4,6 +4,7 @@ import cors from "cors";
 import express from "express";
 import QRCode from "qrcode";
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { loadFieldNotes, relevantNotes } from "./field-notes.mjs";
 import { parseSseBuffer } from "./sse.mjs";
 import { matchSightings } from "./detect.mjs";
@@ -15,7 +16,9 @@ import {
   mergeAchievementProgress,
   parsePlaytimeHours,
   steamApiConfigured,
+  steamPersona,
   steamProfileIsPrivate,
+  steamStatsAreEmpty,
   verifySteamAssertion
 } from "./steam.mjs";
 
@@ -24,7 +27,7 @@ const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_TTS_MODEL = "gpt-4o-mini-tts";
 const DEFAULT_TTS_VOICE = "onyx";
 const DEFAULT_TTS_INSTRUCTIONS = "Speak as a deep, warm Black man in his thirties or forties. Low chest voice, unhurried, dry humor, direct. Sound like someone talking across a campfire, not an announcer, not a cartoon, and not a whisper.";
-const APP_VERSION = "1.7.2";
+const APP_VERSION = "1.7.6";
 const PUBLIC_DIR = fileURLToPath(new URL("./public/", import.meta.url));
 const PUBLIC_INDEX = fileURLToPath(new URL("./public/index.html", import.meta.url));
 
@@ -243,7 +246,9 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
 
   const steamKey = String(env.STEAM_API_KEY || "").trim();
   const steamNonce = steamSessions || createSteamSessions();
-  const links = linkHub || createLinkHub();
+  const linkStore = env.LINK_STORE_PATH
+    || join(dirname(fileURLToPath(import.meta.url)), "data", "link-sessions.json");
+  const links = linkHub || createLinkHub({ storePath: linkStore });
   const places = loadPlaceIndex();
   let schemaCache = null;
   let schemaCachedAt = 0;
@@ -280,6 +285,24 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
     }
   });
 
+  app.get("/api/steam/profile", requireClientToken, async (req, res) => {
+    const steamId = String(req.query.steamId || "");
+    if (!/^\d{17}$/.test(steamId)) return res.status(400).json({ error: "A 17-digit SteamID64 is required." });
+    if (!steamKey) {
+      return res.status(503).json({
+        error: "Steam sync is off until STEAM_API_KEY is set on the server.",
+        code: "steam_disabled"
+      });
+    }
+    try {
+      const summary = await steamJson("ISteamUser/GetPlayerSummaries/v2/", { steamids: steamId });
+      return res.json({ steamId, ...steamPersona(summary.body) });
+    } catch (error) {
+      logger.error(error);
+      return res.status(502).json({ error: "Steam could not be reached.", code: "steam_unavailable" });
+    }
+  });
+
   app.get("/api/steam/session", requireClientToken, (req, res) => {
     const nonce = String(req.query.nonce || "");
     return res.json(steamNonce.read(nonce));
@@ -297,10 +320,11 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
     }
     try {
       const player = await steamJson("ISteamUserStats/GetPlayerAchievements/v1/", { steamid: steamId, appid: RDR2_APPID });
-      if (steamProfileIsPrivate(player.status, player.body)) {
+      if (steamProfileIsPrivate(player.status, player.body) || steamStatsAreEmpty(player.body)) {
+        const empty = steamStatsAreEmpty(player.body);
         return res.status(403).json({
-          error: "Steam profile game details must be public. In Steam, open your profile, Edit Profile, Privacy Settings, and set Game details to Public.",
-          code: "steam_private",
+          error: "Set Steam Privacy, Game details, to Public.",
+          code: empty ? "steam_empty" : "steam_private",
           appId: RDR2_APPID
         });
       }
@@ -347,7 +371,7 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
     const code = String(req.body?.code || "");
     if (!/^\d{6}$/.test(code)) return res.status(400).json({ error: "Enter the 6-digit code from Frontier Guide." });
     const claimed = links.claim(code);
-    if (!claimed) return res.status(404).json({ error: "That pairing code is expired or already used." });
+    if (!claimed) return res.status(404).json({ error: "That pairing code expired. Tap Show pairing code again." });
     return res.json(claimed);
   });
 
@@ -701,7 +725,7 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
       name: "Frontier Guide API",
       ok: true,
       version: APP_VERSION,
-      endpoints: ["/api/health", "/api/ask", "/api/speak", "/api/coach", "/api/live-update", "/api/steam/progress", "/api/link/pair"]
+      endpoints: ["/api/health", "/api/ask", "/api/speak", "/api/coach", "/api/live-update", "/api/steam/profile", "/api/steam/progress", "/api/link/pair"]
     });
   });
 

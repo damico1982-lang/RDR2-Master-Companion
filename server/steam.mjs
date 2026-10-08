@@ -29,6 +29,21 @@ export function steamProfileIsPrivate(status, body) {
   return Boolean(stats && stats.success === false);
 }
 
+export function steamStatsAreEmpty(body) {
+  const stats = body?.playerstats;
+  if (!stats || stats.success === false) return false;
+  return !Array.isArray(stats.achievements) || stats.achievements.length === 0;
+}
+
+export function steamPersona(body) {
+  const player = body?.response?.players?.[0];
+  if (!player) return { personaName: "", avatar: "" };
+  return {
+    personaName: String(player.personaname || ""),
+    avatar: String(player.avatarmedium || player.avatarfull || player.avatar || "")
+  };
+}
+
 export async function verifySteamAssertion(params, fetchImpl = globalThis.fetch) {
   const claimedId = String(params["openid.claimed_id"] || "");
   const steamId = extractSteamId(claimedId);

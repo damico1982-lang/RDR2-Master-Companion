@@ -9,17 +9,19 @@ sealed class MainForm : Form
     readonly TextBox _code = new() { Width = 160 };
     readonly Button _pair = new() { Text = "Pair", AutoSize = true };
     readonly CheckBox _capture = new() { Text = "Capture the Red Dead Redemption 2 window", AutoSize = true };
+    readonly Label _paired = new() { AutoSize = true, Font = new Font(FontFamily.GenericSansSerif, 9f, FontStyle.Bold), Text = "" };
     readonly Label _status = new() { AutoSize = true, MaximumSize = new Size(420, 0), Text = "Capture is off." };
     readonly NotifyIcon _tray = new() { Visible = true, Text = "Frontier Link — capture off" };
     readonly System.Windows.Forms.Timer _timer = new() { Interval = 4000 };
-    readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(20) };
+    readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(60) };
     readonly IReadOnlyList<Place> _places;
     string _token = "";
     int _busy;
+    internal static bool ScreenshotMode;
 
     public MainForm()
     {
-        Text = "Frontier Link 1.7.0";
+        Text = "Frontier Link 1.7.6";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
@@ -34,18 +36,29 @@ sealed class MainForm : Form
         var serverLabel = new Label { AutoSize = true, Text = "Frontier Guide server" };
         var codeLabel = new Label { AutoSize = true, Text = "6-digit code or frontier-link link" };
         var layout = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(16), AutoScroll = true };
-        layout.Controls.AddRange([privacy, serverLabel, _server, codeLabel, _code, _pair, _capture, _status]);
+        layout.Controls.AddRange([privacy, serverLabel, _server, codeLabel, _code, _pair, _capture, _paired, _status]);
         Controls.Add(layout);
         _pair.Click += async (_, _) => await PairAsync();
         _capture.CheckedChanged += (_, _) =>
         {
             _tray.Text = _capture.Checked ? "Frontier Link — capture on" : "Frontier Link — capture off";
-            _status.Text = _capture.Checked
-                ? "Capture is on. Only the Red Dead Redemption 2 window is used."
-                : "Capture is off.";
+            if (_paired.Text.Length == 0)
+            {
+                _status.Text = _capture.Checked
+                    ? "Capture is on. Only the Red Dead Redemption 2 window is used."
+                    : "Capture is off.";
+            }
+            else if (!_capture.Checked)
+            {
+                _status.Text = "Paired. Capture is off until you turn it on.";
+            }
+            else
+            {
+                _status.Text = "Paired. Capture is on. Only the Red Dead Redemption 2 window is used.";
+            }
         };
         _timer.Tick += async (_, _) => await TickAsync();
-        _timer.Start();
+        if (!ScreenshotMode) _timer.Start();
         _tray.Icon = SystemIcons.Application;
         var menu = new ContextMenuStrip();
         menu.Items.Add("Show", null, (_, _) => ShowForm());
@@ -89,15 +102,17 @@ sealed class MainForm : Form
         try
         {
             _pair.Enabled = false;
-            var client = new LinkClient(_http, baseUrl);
-            _token = await client.ClaimAsync(code);
-            _status.Text = _token.Length > 0
-                ? "Paired. Leave capture off until you want the RDR2 window sent to Live Coach."
-                : "Pairing did not return a token.";
+            _token = await PairingSession.WakeAndClaimAsync(_http, baseUrl, code, note => _status.Text = note);
+            _paired.Text = PairingSession.Paired;
+            _status.Text = "Paired. Leave capture off until you want the RDR2 window sent to Live Coach.";
         }
-        catch (Exception error)
+        catch (InvalidOperationException error) when (error.Message == PairingSession.Expired || error.Message == PairingSession.Failed)
         {
-            _status.Text = "Pairing failed. Check the code and the server. " + error.Message;
+            _status.Text = error.Message;
+        }
+        catch
+        {
+            _status.Text = PairingSession.Failed;
         }
         finally
         {
@@ -110,20 +125,32 @@ sealed class MainForm : Form
         if (!_capture.Checked || _token.Length == 0 || Interlocked.Exchange(ref _busy, 1) == 1) return;
         try
         {
-            var hwnd = WindowCapture.FindGameWindow();
-            if (hwnd == IntPtr.Zero)
+            var window = WindowCapture.FindGameWindow();
+            var skip = CaptureWindow.Describe(window.Found, window.Minimized, window.Width, window.Height);
+            if (skip != null)
             {
-                _status.Text = "Capture is on. Red Dead Redemption 2 is not the open window, so nothing was captured.";
+                _status.Text = skip;
                 return;
             }
-            using var bitmap = WindowCapture.CopyWindow(hwnd);
+            var copied = WindowCapture.CopyWindow(window.Handle);
+            if (copied.Black)
+            {
+                _status.Text = CaptureWindow.BlackFrame;
+                return;
+            }
+            using var bitmap = copied.Image;
             if (bitmap == null)
             {
-                _status.Text = "The Red Dead window could not be copied. Nothing else was captured.";
+                _status.Text = CaptureWindow.Waiting;
                 return;
             }
             var client = new LinkClient(_http, _server.Text.Trim());
             var frame = WindowCapture.ToJpegDataUrl(bitmap);
+            if (frame.Length == 0)
+            {
+                _status.Text = CaptureWindow.Waiting;
+                return;
+            }
             await client.PostFrameAsync(_token, frame);
             var text = "";
             try { text = await GameOcr.ReadAsync(bitmap); }
@@ -131,17 +158,43 @@ sealed class MainForm : Form
             var sightings = SightingMatcher.Match(text, _places);
             await client.PostSightingsAsync(_token, sightings);
             _status.Text = sightings.Marks.Count > 0
-                ? $"Sent one RDR2 frame. Marked {sightings.Marks[0].Title}."
-                : "Sent one RDR2 frame to Frontier Guide.";
+                ? $"Paired. Sent one RDR2 frame. Marked {sightings.Marks[0].Title}."
+                : "Paired. Sent one RDR2 frame to Frontier Guide.";
         }
-        catch (Exception error)
+        catch
         {
-            _status.Text = "The frame was not sent. " + error.Message;
+            _status.Text = "The frame was not sent. Leave Red Dead Redemption 2 open and not minimized.";
         }
         finally
         {
             Interlocked.Exchange(ref _busy, 0);
         }
+    }
+
+    internal void SaveShots(string directory)
+    {
+        Directory.CreateDirectory(directory);
+        var handle = Handle;
+        PerformLayout();
+        Refresh();
+        _status.Text = PairingSession.Waking;
+        WriteShot(directory, "frontierlink-waking-1.7.6.png");
+        _paired.Text = PairingSession.Paired;
+        _status.Text = "Paired. Leave capture off until you want the RDR2 window sent to Live Coach.";
+        WriteShot(directory, "frontierlink-paired-1.7.6.png");
+        _capture.Checked = true;
+        _status.Text = "Paired. Capture is on. Only the Red Dead Redemption 2 window is used.";
+        WriteShot(directory, "frontierlink-capture-on-1.7.6.png");
+        _ = handle;
+    }
+
+    void WriteShot(string directory, string name)
+    {
+        var width = Math.Max(1, ClientSize.Width);
+        var height = Math.Max(1, ClientSize.Height);
+        using var bitmap = new Bitmap(width, height);
+        DrawToBitmap(bitmap, new Rectangle(0, 0, width, height));
+        bitmap.Save(Path.Combine(directory, name), System.Drawing.Imaging.ImageFormat.Png);
     }
 
     void ShowForm()

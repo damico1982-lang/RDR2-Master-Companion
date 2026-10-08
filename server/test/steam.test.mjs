@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { matchSightings } from "../detect.mjs";
 import { createLinkHub } from "../link.mjs";
@@ -127,7 +129,71 @@ test("progress uses the recorded Steam responses and a private profile is explai
     assert.equal(response.status, 403);
     const body = await response.json();
     assert.equal(body.code, "steam_private");
-    assert.match(body.error, /Game details to Public/);
+    assert.match(body.error, /Game details, to Public/);
+  });
+});
+
+test("empty Steam stats ask for public game details", async () => {
+  const fetchImpl = async url => {
+    if (String(url).includes("GetPlayerAchievements")) {
+      return Response.json({ playerstats: { steamID: "76561198000000000", success: true, achievements: [] } });
+    }
+    return Response.json({});
+  };
+  const app = createApp({
+    env: { FRONTIER_CLIENT_TOKEN: "frontier-secret", STEAM_API_KEY: "steam-test-key" },
+    fetchImpl,
+    logger: silentLogger
+  });
+  await withServer(app, async baseUrl => {
+    const response = await fetch(`${baseUrl}/api/steam/progress?steamId=76561198000000000`, {
+      headers: { "x-frontier-key": "frontier-secret" }
+    });
+    assert.equal(response.status, 403);
+    const body = await response.json();
+    assert.equal(body.code, "steam_empty");
+    assert.match(body.error, /Game details, to Public/);
+  });
+});
+
+test("a connected Steam profile includes the persona name and avatar", async () => {
+  const fetchImpl = async url => {
+    if (String(url).includes("GetPlayerSummaries")) {
+      return Response.json({
+        response: {
+          players: [{
+            steamid: "76561198000000000",
+            personaname: "Arthur",
+            avatarmedium: "https://avatars.steamstatic.com/arthur.jpg"
+          }]
+        }
+      });
+    }
+    return Response.json({});
+  };
+  const app = createApp({
+    env: { FRONTIER_CLIENT_TOKEN: "frontier-secret", STEAM_API_KEY: "steam-test-key" },
+    fetchImpl,
+    logger: silentLogger
+  });
+  await withServer(app, async baseUrl => {
+    const response = await fetch(`${baseUrl}/api/steam/profile?steamId=76561198000000000`, {
+      headers: { "x-frontier-key": "frontier-secret" }
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      steamId: "76561198000000000",
+      personaName: "Arthur",
+      avatar: "https://avatars.steamstatic.com/arthur.jpg"
+    });
+  });
+  const missing = createApp({ env: { FRONTIER_CLIENT_TOKEN: "frontier-secret" }, logger: silentLogger });
+  await withServer(missing, async baseUrl => {
+    const response = await fetch(`${baseUrl}/api/steam/profile?steamId=76561198000000000`, {
+      headers: { "x-frontier-key": "frontier-secret" }
+    });
+    assert.equal(response.status, 503);
+    assert.equal((await response.json()).code, "steam_disabled");
   });
 });
 
@@ -153,7 +219,12 @@ test("OpenID callback stores the SteamID64 for the phone to pick up", async () =
 });
 
 test("Frontier Link pairs with a 6-digit code and only accepts known collectible ids", async () => {
-  const app = createApp({ env: { FRONTIER_CLIENT_TOKEN: "frontier-secret" }, logger: silentLogger });
+  const dir = mkdtempSync(join(tmpdir(), "frontier-link-app-"));
+  const app = createApp({
+    env: { FRONTIER_CLIENT_TOKEN: "frontier-secret", LINK_STORE_PATH: join(dir, "sessions.json") },
+    logger: silentLogger
+  });
+  try {
   await withServer(app, async baseUrl => {
     const paired = await fetch(`${baseUrl}/api/link/pair`, {
       method: "POST",
@@ -163,6 +234,14 @@ test("Frontier Link pairs with a 6-digit code and only accepts known collectible
     const phone = await paired.json();
     assert.match(phone.code, /^\d{6}$/);
     assert.match(phone.qrSvg, /<svg/);
+    const absent = phone.code === "000000" ? "111111" : "000000";
+    const missing = await fetch(`${baseUrl}/api/link/claim`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code: absent })
+    });
+    assert.equal(missing.status, 404);
+    assert.match((await missing.json()).error, /Show pairing code again/);
     const claim = await fetch(`${baseUrl}/api/link/claim`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -201,6 +280,9 @@ test("Frontier Link pairs with a 6-digit code and only accepts known collectible
     assert.equal(body.events.some(item => item.id === "not-a-real-place"), false);
     assert.equal(body.events.some(item => item.promptKind === "gold-bar"), true);
   });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("on-screen text marks a named collectible and asks before a generic gold bar", () => {
@@ -219,6 +301,28 @@ test("on-screen text marks a named collectible and asks before a generic gold ba
   assert.deepEqual(generic.prompts[0].candidates.map(item => item.id), ["gold-limpany", "gold-braithwaite"]);
   const challenge = matchSightings("Challenge Complete", places);
   assert.equal(challenge.prompts.some(item => item.kind === "challenge"), true);
+});
+
+test("a pairing code survives a new hub and a frame is not written to disk", () => {
+  const dir = mkdtempSync(join(tmpdir(), "frontier-link-"));
+  const storePath = join(dir, "link-sessions.json");
+  try {
+    let clock = 5_000;
+    const first = createLinkHub({ now: () => clock, ttlMs: 10 * 60 * 1000, storePath });
+    const pair = first.createPair();
+    const claimed = first.claim(pair.code);
+    assert.equal(first.saveFrame(claimed.token, "data:image/jpeg;base64,aaaa", "2026-01-02T00:00:00.000Z"), true);
+    const raw = readFileSync(storePath, "utf8");
+    assert.equal(raw.includes("image/jpeg"), false);
+    const second = createLinkHub({ now: () => clock, ttlMs: 10 * 60 * 1000, storePath });
+    assert.equal(second.status(pair.token).paired, true);
+    assert.equal(second.claim(pair.code), null);
+    clock += 11 * 60 * 1000;
+    const third = createLinkHub({ now: () => clock, ttlMs: 10 * 60 * 1000, storePath });
+    assert.equal(third.status(pair.token), null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("a pairing hub expires nothing while the code is fresh", () => {

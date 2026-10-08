@@ -157,6 +157,7 @@ async function requestJson(path, options = {}) {
   if (!response.ok) {
     const error = new Error(data.error || `Server returned ${response.status}.`);
     error.status = response.status;
+    error.code = data.code || "";
     throw error;
   }
   return data;
@@ -1192,20 +1193,177 @@ function userNote(note) {
   return playerText(note);
 }
 
+const COUNTY_STATE = {
+  "Grizzlies West": "Ambarino",
+  "Grizzlies East": "Ambarino",
+  "Cumberland Forest": "New Hanover",
+  "Heartlands": "New Hanover",
+  "Roanoke Ridge": "New Hanover",
+  "Scarlett Meadows": "Lemoyne",
+  "Bayou Nwa": "Lemoyne",
+  "Bluewater Marsh": "Lemoyne",
+  "Big Valley": "West Elizabeth",
+  "Tall Trees": "West Elizabeth",
+  "Great Plains": "West Elizabeth",
+  "Hennigan's Stead": "New Austin",
+  "Cholla Springs": "New Austin",
+  "Rio Bravo": "New Austin",
+  "Gaptooth Ridge": "New Austin"
+};
+
+const DISCOVERABLE_HOW = {
+  "sec-discoverable_abandoned_church": "Search the ruined church at Bolger Glade. A lockbox sits inside the chapel.",
+  "sec-discoverable_abandoned_oil_well": "Climb the abandoned derrick in the Heartlands. It is a landmark, not a shop.",
+  "sec-discoverable_abandoned_trading_post": "Walk the ruined trading post in the Grizzlies East. Nothing is for sale.",
+  "sec-discoverable_barrel_rider": "Look over the falls. A skeleton is stuck in a barrel.",
+  "sec-discoverable_braithwaites_secret": "After the Chapter 3 events at the manor, search the basement under Braithwaite Manor.",
+  "sec-discoverable_brush_fire": "Ride through the scorched ground in the Heartlands. It is a sight, not a pickup.",
+  "sec-discoverable_circus_wagons": "Inspect the wrecked circus wagons in Tall Trees.",
+  "sec-discoverable_civil_war_battlefield": "Walk Bolger Glade. The battlefield debris is the point of interest.",
+  "sec-discoverable_crashed_airship": "Climb the wrecked airship in Big Valley.",
+  "sec-discoverable_dead_town": "Walk through Pleasance and check the schoolhouse.",
+  "sec-discoverable_defaced_graves": "Visit the smashed graves in the Grizzlies West.",
+  "sec-discoverable_donkey_lady": "The shack near Armadillo is the donkey-lady spot. New Austin opens in the epilogue.",
+  "sec-discoverable_face_in_cliff": "Stand back from the cliff in Roanoke Ridge until the rock reads as a face.",
+  "sec-discoverable_face_trees": "The trees in Tall Trees are carved into faces. They mark a trail, not a chest.",
+  "sec-discoverable_flying_machine": "The flying machine crashed in New Austin. That region stays closed until the epilogue.",
+  "sec-discoverable_fossilised_man": "Look in the rock shelter in Roanoke Ridge. A man has turned to stone.",
+  "sec-discoverable_frankenstein_monster": "The small church north of Van Horn. Return during a thunderstorm to see the experiment.",
+  "sec-discoverable_frozen_settler": "A frozen body is in the ice at Lake Isabella. You can see it from the bank.",
+  "sec-discoverable_giant_remains": "Bring a lantern into the cave in Big Valley. A huge skeleton is inside.",
+  "sec-discoverable_grays_secret": "At Caliga Hall, check the grounds after Chapter 3 opens the Gray property.",
+  "sec-discoverable_hand_in_swamp": "In Bayou Nwa a hand sticks out of the mud. It is a sight.",
+  "sec-discoverable_hermit_woman": "A cave in Big Valley. The woman inside can be hostile.",
+  "sec-discoverable_hidden_tunnel": "Follow the tunnel mouth through the ridge.",
+  "sec-discoverable_indian_burial": "A burial ground in Big Valley. There is nothing you need to take.",
+  "sec-discoverable_jesuit_missionary": "A missionary's remains in Gaptooth Ridge. New Austin is epilogue country.",
+  "sec-discoverable_mammoth": "Mammoth bones lie in the snow of the Grizzlies West.",
+  "sec-discoverable_meditating_monk": "A monk sits on a cliff in Roanoke Ridge. He does not speak.",
+  "sec-discoverable_meteor_house": "The cabin in the Grizzlies East has a hole in the roof from a meteor. Read the notes inside.",
+  "sec-discoverable_meteorite": "The crater sits above the meteor house. The rock is in the hole.",
+  "sec-discoverable_obelisk": "A stone obelisk in the western woods. It is a landmark.",
+  "sec-discoverable_old_world_script": "Bring a lantern into the Roanoke Ridge cave. Writing covers the wall.",
+  "sec-discoverable_one_room_church": "Step inside the small church in the marsh.",
+  "sec-discoverable_pagan_ritual": "A ritual circle in Tall Trees. The site is the point of interest.",
+  "sec-discoverable_painting_in_cabin": "A cabin in Bayou Nwa has a painting inside. Look at the canvas.",
+  "sec-discoverable_phonograph": "A bayou shack holds a phonograph. Play it.",
+  "sec-discoverable_register_rock": "A boulder in the Heartlands is covered with carved names. Inspect it.",
+  "sec-discoverable_serpent_mound": "An earth mound shaped like a serpent in Bluewater Marsh.",
+  "sec-discoverable_sperm_whale": "A whale skeleton lies on the New Austin shore. Epilogue country.",
+  "sec-discoverable_stonehenge": "A ring of standing stones in the Grizzlies East.",
+  "sec-discoverable_strange_statues_painting": "The painting near Window Rock points at the strange statues. The statues are a separate puzzle.",
+  "sec-discoverable_trading_post": "Walk the old trading post in the Heartlands.",
+  "sec-discoverable_trail_trees": "A bent trail tree in Roanoke Ridge. Follow the line of trees.",
+  "sec-discoverable_trail_trees2": "Another bent trail tree in Roanoke Ridge, on the same line.",
+  "sec-discoverable_trail_trees3": "Another bent trail tree in Roanoke Ridge, on the same line.",
+  "sec-discoverable_trail_trees4": "The last bent trail tree in this Roanoke Ridge line.",
+  "sec-discoverable_utopian_colony_building": "Doverhill, the hilltop laboratory north of Annesburg. Come back at night.",
+  "sec-discoverable_warped_tree": "A twisted tree. It is a landmark.",
+  "sec-discoverable_whale_bone": "A whale bone sits in the western hills, far from the sea."
+};
+
+function countyIn(text) {
+  const names = Object.keys(COUNTY_STATE).sort((a, b) => b.length - a.length);
+  const found = names.find(name => String(text || "").toLowerCase().includes(name.toLowerCase()));
+  return found ? { county: found, state: COUNTY_STATE[found] } : null;
+}
+
+function nearestCounty(lat, lng) {
+  let best = null;
+  let bestDistance = Infinity;
+  for (const entry of state.gazetteer || []) {
+    const countyState = COUNTY_STATE[entry.name];
+    if (!countyState || !Number.isFinite(entry.lat) || !Number.isFinite(entry.lng)) continue;
+    const distance = ((entry.lat - lat) ** 2) + ((entry.lng - lng) ** 2);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = { county: entry.name, state: countyState };
+    }
+  }
+  return best;
+}
+
+function linkedLegendary(item) {
+  return (state.legendaries || []).find(row => row.id === item.linkId || row.name === item.title) || null;
+}
+
+function modeLabel(item) {
+  if (item.mode === "story") return "Story";
+  if (item.mode === "online") return "Online";
+  if (item.mode === "either") return "Story and Online";
+  return "";
+}
+
 function placeRegion(item) {
-  const region = String(item.region || "").trim();
-  const landmark = String(item.landmark || "").trim();
-  let line = region;
-  if (landmark && !region.toLowerCase().includes(landmark.toLowerCase())) line = line ? `${line} · ${landmark}` : landmark;
-  const mode = item.mode === "story" ? "Story" : item.mode === "online" ? "Online" : item.mode === "either" ? "Story and Online" : "";
-  if (mode) line = line ? `${line} · ${mode}` : mode;
-  return line;
+  const linked = linkedLegendary(item);
+  const raw = String((linked && linked.region) || item.region || "").trim();
+  const named = !/^(story mode|online|either|story and online)$/i.test(raw) ? countyIn(raw) : null;
+  if (named) return `${named.county}, ${named.state}`;
+  const split = raw.match(/^(Ambarino|New Hanover|Lemoyne|West Elizabeth|New Austin)\s+[—–-]\s+(.+)$/i);
+  if (split) {
+    const place = split[2].split(",")[0].trim();
+    if (place && !/^(story|online)$/i.test(place)) return `${place}, ${split[1]}`;
+  }
+  if (Number.isFinite(item.lat) && Number.isFinite(item.lng)) {
+    const near = nearestCounty(item.lat, item.lng);
+    if (near) return `${near.county}, ${near.state}`;
+  }
+  return "";
+}
+
+function huntDirections(item) {
+  const entry = linkedLegendary(item);
+  if (!entry) return "After Hosea gives you the Legendary Animal Map in Chapter 2, ride into the territory and follow the clues. Skin it once. It does not respawn.";
+  const where = String(entry.landmark || "").replace(/\s*Older guides misspell it Bolder Blade\.?/i, "").trim();
+  let gate = String(entry.unlock || "");
+  gate = gate.replace(/The other legendary hunts open after the Chapter 2 mission Exit, Pursued by a Bruised Ego, when Hosea gives you an incomplete Legendary Animal Map\. /, "Hosea's Legendary Animal Map opens in Chapter 2, after Exit, Pursued by a Bruised Ego. ");
+  gate = gate.replace(/the Red Dead Wiki says you must /i, "you need to ");
+  gate = gate.replace(/Treat that gate as conflicting: /i, "");
+  gate = gate.replace(/The challenge list itself tells you what rank 9 requires; this guide does not restate a task that was not rechecked\. ?/i, "");
+  gate = gate.replace(/Online's Naturalist Tatanka is a different animal\.?/i, "");
+  return [where, gate.trim(), "Enter the territory and follow the clues. Skin it once. It does not respawn."].filter(Boolean).join(" ");
+}
+
+function fishDirections(item) {
+  const animal = (state.animals || []).find(row => row.name === item.title);
+  if (!animal) return "After Jeremy Gill starts A Fisher of Fish, buy the special lure in Lagras and fish this spot. Mail the catch to Gill from a post office.";
+  if (/channel catfish/i.test(item.title) || /not catchable|do not catch/i.test(`${animal.bait || ""} ${animal.where || ""}`)) {
+    return [animal.where, animal.note].filter(Boolean).join(" ");
+  }
+  const lure = animal.bait ? `Use the ${animal.bait} from the Lagras bait shop after Jeremy Gill starts A Fisher of Fish.` : "Buy the special lure in Lagras after Jeremy Gill starts A Fisher of Fish.";
+  return `${animal.where} ${lure} Mail the fish to him from a post office.`;
+}
+
+function shopDirections(item) {
+  if (/gunsmith/i.test(item.title || "")) return `Walk into the ${item.title} while it is open. The counter sells guns, custom work, and ammunition.`;
+  if (/fence/i.test(item.title || "")) return `Use the ${item.title} to sell valuables and craft trinkets. A fence has to be part of your story before the shop will deal with you.`;
+  return `Open ${item.title || "the shop"} during shop hours.`;
+}
+
+function readableDirections(text) {
+  let value = String(text || "");
+  value = value.replace(/Published [^.]*coordinate, converted with the Jean Ropke[^.]*\. ?/i, "");
+  value = value.replace(/published as [^.]+\. ?/i, "");
+  value = value.replace(/The published label for [^.]+\. ?/i, "");
+  value = value.replace(/The published Rare Shotgun marker\. ?/i, "");
+  value = value.replace(/Published location of /i, "");
+  value = value.replace(/Published [A-Za-z][^.]{0,48} marker, ?/g, "");
+  value = value.replace(/Published [A-Za-z][^.]{0,48} marker\. ?/g, "");
+  value = value.replace(/This published point is /i, "The pin is ");
+  return playerText(value);
 }
 
 function howToGet(item) {
+  const raw = String(item.directions || "");
+  let steps = "";
+  if (/published RDOMap story point/i.test(raw)) steps = huntDirections(item);
+  else if (/legendary-fish point from RDOMap/i.test(raw)) steps = fishDirections(item);
+  else if (/^Published shop coordinate/i.test(raw)) steps = shopDirections(item);
+  else if (raw === "Published story discoverable.") steps = DISCOVERABLE_HOW[item.id] || "Ride to the pin and look around. There is no item to collect unless you can see one.";
+  else if (/^Published White Arabian marker/i.test(raw)) steps = "It stands on the west shore of Lake Isabella. Approach slowly, save, then mount. Study it first if you want the compendium entry.";
+  else steps = readableDirections(raw || item.enter || "");
   const parts = [];
   const obtain = String(item.obtain || "").trim();
-  const steps = playerText(item.directions || item.enter || "");
   if (obtain && (!steps || !steps.toLowerCase().includes(obtain.toLowerCase()))) parts.push(obtain.endsWith(".") ? obtain : `${obtain}.`);
   if (steps) parts.push(steps);
   if (item.chapter) parts.push(/[.!?]$/.test(String(item.chapter)) ? String(item.chapter) : `${item.chapter}.`);
@@ -1327,7 +1485,8 @@ function fillPlaceCard(detail, item, actions) {
   swatch.style.color = style.ink;
   swatch.append(markerGlyph(style.glyph));
   const category = document.createElement("span");
-  category.textContent = style.label;
+  const mode = modeLabel(item);
+  category.textContent = mode ? `${style.label} · ${mode}` : style.label;
   kicker.append(swatch, category);
   const title = document.createElement("h3");
   title.textContent = item.title || item.name || "Place";
@@ -1921,7 +2080,7 @@ function renderMapTags() {
   const sheet = $("#mapTags");
   if (!sheet) return;
   const visible = state.mapLocations.filter(modeMatches);
-  const present = [...new Set(visible.map(item => item.category))];
+  const present = [...new Set(visible.map(item => item.category))].filter(category => category && category !== "None");
   const categories = MARKER_ORDER.filter(category => present.includes(category));
   for (const category of present) if (!categories.includes(category)) categories.push(category);
   const allOn = categories.length > 0 && categories.every(mapCategoryOn);
@@ -1935,7 +2094,7 @@ function renderMapTags() {
   mark.textContent = allOn ? "✓" : "";
   const name = document.createElement("span");
   name.className = "layer-name";
-  name.textContent = allOn ? "None" : "All";
+  name.textContent = "All";
   const total = document.createElement("span");
   total.className = "layer-count";
   total.textContent = String(visible.length);
@@ -2053,6 +2212,8 @@ async function checkStatus(showMessage = false) {
       headers: serverHeaders()
     });
 
+    applySteamKeyNote(Boolean(data.steam?.configured));
+    if (data.steam?.configured) refreshSteamProfile();
     if (data.authRequired && !data.authorized) {
       setConnectionState("warning", "Access key needed");
       if (showMessage) $("#settingsMsg").textContent = "Server found, but the access key is missing or incorrect.";
@@ -2758,6 +2919,40 @@ function mountLeafletMap(viewport, paneId) {
   const layers = ["far", "mid", "close"].map(name => L.imageOverlay(`content/parchment-${name}.jpg`, MAP_FRAME));
   viewport._parchment = layers;
   viewport._drawPins = () => drawPins(viewport);
+  const vectorPane = map.createPane("vectors");
+  // Above the parchment image (overlay pane is 400) and below pins.
+  vectorPane.style.zIndex = "410";
+  vectorPane.style.background = "transparent";
+  vectorPane.style.pointerEvents = "none";
+  viewport._vectorPane = vectorPane;
+  const vectorRenderer = L.canvas({ padding: 1, pane: "vectors" });
+  viewport._vectors = L.layerGroup().addTo(map);
+  viewport._vectorsReady = false;
+  const drawVectors = data => {
+    const common = { renderer: vectorRenderer, interactive: false, pane: "vectors", smoothFactor: 0, lineCap: "round", lineJoin: "round" };
+    const latLngs = line => (line || []).map(([lng, lat]) => [lat, lng]);
+    (data.lakes || []).forEach(rings => {
+      const converted = rings.map(latLngs).filter(ring => ring.length >= 3);
+      if (!converted.length) return;
+      L.polygon(converted, { ...common, color: "#3a4e54", weight: 1.5, fillColor: "#849496", fillOpacity: 1, opacity: 1 }).addTo(viewport._vectors);
+    });
+    const stroke = (key, style) => {
+      (data[key] || []).forEach(line => {
+        const converted = latLngs(line);
+        if (converted.length < 2) return;
+        L.polyline(converted, { ...common, ...style }).addTo(viewport._vectors);
+      });
+    };
+    stroke("rivers", { color: "#6c8084", weight: 1.5 });
+    stroke("borders", { color: "#4a3828", weight: 1.6, dashArray: "1 6.5" });
+    stroke("roads", { color: "#70543a", weight: 1.35 });
+    stroke("rail", { color: "#48382a", weight: 1.3, dashArray: "6 5" });
+    viewport._vectorsReady = true;
+  };
+  fetch("content/map-lines.json")
+    .then(response => response.json())
+    .then(drawVectors)
+    .catch(() => { viewport._vectorsReady = false; });
   if (ACCURACY_MAP) {
     L.tileLayer("https://s.rsg.sc/sc/images/games/RDR2/map/game/{z}/{x}/{y}.jpg", {
       bounds: MAP_FRAME,
@@ -2942,6 +3137,7 @@ window.frontierShowAccuracy = on => {
     }
     if (viewport._accuracyLayer) viewport._accuracyLayer.setOpacity(on ? 1 : 0);
     viewport._parchment?.forEach(layer => layer.setOpacity(on ? 0 : 1));
+    if (viewport._vectorPane) viewport._vectorPane.style.display = on ? "none" : "";
     if (!on) viewport._drawPins?.();
   }
 };
@@ -3375,6 +3571,12 @@ renderSteamStatus();
 window.speechSynthesis?.getVoices?.();
 window.speechSynthesis?.addEventListener?.("voiceschanged", () => {});
 setInterval(pollLink, 8000);
+function keepServerAwake() {
+  if (!settings.api || settings.serverMode === "offline") return;
+  fetch(`${settings.api}/api/health`, { cache: "no-store" }).catch(() => {});
+}
+keepServerAwake();
+setInterval(keepServerAwake, 4 * 60 * 1000);
 
 function steamId() {
   return localStorage.getItem("fg_steam_id") || "";
@@ -3402,6 +3604,23 @@ function formatUnlock(unix) {
   return `Unlocked ${date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}`;
 }
 
+function applySteamKeyNote(configured) {
+  const note = $("#steamKeyNote");
+  if (note) note.hidden = Boolean(configured);
+}
+
+function savedSteamProfile() {
+  const id = steamId();
+  if (!id) return null;
+  try {
+    const data = JSON.parse(localStorage.getItem("fg_steam_profile") || "null");
+    if (!data || data.steamId !== id) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 function renderSteamProgress(data, note = "") {
   const summary = $("#progressSummary");
   const list = $("#progressList");
@@ -3409,16 +3628,22 @@ function renderSteamProgress(data, note = "") {
   summary.replaceChildren();
   summary.classList.toggle("progress-empty", !data);
   if (!data) {
+    const linked = Boolean(steamId());
     const heading = document.createElement("h3");
-    heading.textContent = "Connect Steam";
+    heading.textContent = linked ? "Steam progress" : "Connect Steam";
     const copy = document.createElement("p");
-    copy.textContent = note || "Sign in from Settings to load Red Dead Redemption 2 achievements and hours. Nothing is shown here until a Steam account is linked.";
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "send";
-    button.textContent = "Connect Steam";
-    button.addEventListener("click", () => setView("settings"));
-    summary.append(heading, copy, button);
+    copy.textContent = note || (linked
+      ? "Achievements appear after a sync."
+      : "Sign in from Settings to load Red Dead Redemption 2 achievements and hours. Nothing is shown here until a Steam account is linked.");
+    summary.append(heading, copy);
+    if (!linked) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "send";
+      button.textContent = "Connect Steam";
+      button.addEventListener("click", () => setView("settings"));
+      summary.append(button);
+    }
   } else {
     const heading = document.createElement("p");
     const hours = Number.isFinite(Number(data.hoursPlayed)) ? `${data.hoursPlayed} hours` : "Hours not shared";
@@ -3467,8 +3692,26 @@ function renderSteamStatus() {
   const node = $("#steamStatus");
   if (!node) return;
   const id = steamId();
+  const profile = savedSteamProfile();
+  const name = profile?.personaName || "";
+  const picture = profile?.avatar || "";
+  const connect = $("#connectSteam");
+  const disconnect = $("#disconnectSteam");
+  const identity = $("#steamIdentity");
+  const avatar = $("#steamAvatar");
+  const persona = $("#steamPersona");
+  if (connect) connect.textContent = id ? "Refresh" : "Connect Steam";
+  if (disconnect) disconnect.hidden = !id;
+  if (identity) identity.hidden = !id || (!name && !picture);
+  if (persona) persona.textContent = name;
+  if (avatar) {
+    avatar.hidden = !picture;
+    avatar.alt = name ? `${name} on Steam` : "";
+    if (picture) avatar.src = picture;
+    avatar.onerror = () => { avatar.hidden = true; };
+  }
   node.textContent = id
-    ? `Connected as SteamID64 ${id}. Game details must be public or achievements stay hidden.`
+    ? `Connected as ${name || `SteamID64 ${id}`}. Game details must be public or achievements stay hidden.`
     : "Steam is not connected. After you connect, game details must be public.";
   const link = $("#linkStatus");
   if (link && localStorage.getItem("fg_link_token") && link.textContent === "Not paired.") {
@@ -3496,6 +3739,11 @@ async function syncSteamProgress() {
     localStorage.setItem("fg_steam_progress", JSON.stringify(data));
     renderSteamProgress(data);
   } catch (error) {
+    if (error.code === "steam_disabled") applySteamKeyNote(false);
+    if (error.status === 403 || error.code === "steam_private" || error.code === "steam_empty") {
+      renderSteamProgress(null, "Set Steam Privacy, Game details, to Public.");
+      return;
+    }
     const message = error.status === 404
       ? "This server does not have Steam progress yet. No saved numbers are shown."
       : (error.message || "Steam sync failed.");
@@ -3506,6 +3754,23 @@ async function syncSteamProgress() {
     }
     renderSteamProgress(cached, message);
   }
+}
+
+async function refreshSteamProfile() {
+  const id = steamId();
+  if (!id || !settings.api || settings.serverMode === "offline") return;
+  try {
+    const data = await requestJson(`/api/steam/profile?steamId=${encodeURIComponent(id)}`, {
+      cache: "no-store",
+      headers: serverHeaders()
+    });
+    localStorage.setItem("fg_steam_profile", JSON.stringify({
+      steamId: id,
+      personaName: data.personaName || "",
+      avatar: data.avatar || ""
+    }));
+    renderSteamStatus();
+  } catch { /* the SteamID64 line stays until Steam shares a name */ }
 }
 
 async function pullLinkFrame() {
@@ -3582,7 +3847,14 @@ async function pollLink() {
     });
     localStorage.setItem("fg_link_since", String(page.next ?? since));
     applyLinkEvents(page.events || []);
-  } catch { /* pairing can expire; the next code replaces it */ }
+  } catch (error) {
+    if (error.status !== 404) return;
+    localStorage.removeItem("fg_link_token");
+    const code = $("#linkCode");
+    if (code) code.hidden = true;
+    const label = $("#linkStatus");
+    if (label) label.textContent = "That pairing code expired. Tap Show pairing code again.";
+  }
 }
 
 let progressPull = 0;
@@ -3598,6 +3870,13 @@ $("#refreshProgress")?.addEventListener("click", () => syncSteamProgress());
 
 $("#connectSteam")?.addEventListener("click", async () => {
   const status = $("#steamStatus");
+  if (steamId()) {
+    if (status) status.textContent = "Refreshing Steam progress.";
+    await refreshSteamProfile();
+    await syncSteamProgress();
+    renderSteamStatus();
+    return;
+  }
   if (!settings.api || settings.serverMode === "offline") {
     if (status) status.textContent = "Choose Auto or Custom and save the server before connecting Steam.";
     return;
@@ -3621,6 +3900,7 @@ $("#connectSteam")?.addEventListener("click", async () => {
       if (data.status === "connected" && data.steamId) {
         localStorage.setItem("fg_steam_id", data.steamId);
         renderSteamStatus();
+        refreshSteamProfile();
         syncSteamProgress();
         return;
       }
@@ -3631,7 +3911,10 @@ $("#connectSteam")?.addEventListener("click", async () => {
 
 $("#disconnectSteam")?.addEventListener("click", () => {
   localStorage.removeItem("fg_steam_id");
+  localStorage.removeItem("fg_steam_profile");
+  try { localStorage.removeItem("fg_steam_progress"); } catch { /* nothing saved */ }
   renderSteamStatus();
+  renderSteamProgress(null);
 });
 
 $("#startLinkPair")?.addEventListener("click", async () => {

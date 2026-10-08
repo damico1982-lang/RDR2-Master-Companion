@@ -2,7 +2,8 @@ import { spawnSync } from "node:child_process";
 import { createConnection } from "node:net";
 import { get as httpGet } from "node:http";
 import { randomBytes } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { inflateSync } from "node:zlib";
 import { setTimeout as delay } from "node:timers/promises";
 
 function encodeFrame(opcode, payload) {
@@ -292,6 +293,10 @@ let ws;
 function send(method, params = {}, timeoutMs = 30000) {
   const id = ++nextId;
   return new Promise((resolve, reject) => {
+    if (!ws) {
+      reject(new Error("DevTools websocket closed"));
+      return;
+    }
     const timer = setTimeout(() => {
       pending.delete(id);
       reject(new Error(`Timed out waiting for ${method}`));
@@ -360,29 +365,28 @@ async function reconnectDevtools() {
 }
 
 async function sendRetry(method, params = {}, timeoutMs = 30000) {
-  try {
-    return await send(method, params, timeoutMs);
-  } catch (error) {
-    console.log(`devtools retry after ${error.message}`);
-    await reconnectDevtools();
-    return await send(method, params, timeoutMs);
+  let last = new Error(`DevTools ${method} failed`);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await send(method, params, timeoutMs);
+    } catch (error) {
+      last = error;
+      console.log(`devtools retry ${attempt + 1} after ${error.message}`);
+      await delay(1200);
+      try {
+        await reconnectDevtools();
+      } catch (reconnectError) {
+        console.log(`devtools reconnect failed: ${reconnectError.message}`);
+        await delay(800);
+      }
+    }
   }
+  throw last;
 }
 
 await openPage();
-try {
-  await send("Runtime.enable");
-} catch (error) {
-  console.error("Runtime.enable failed once, retrying", error.message);
-  dumpLogs();
-  const previous = ws;
-  ws = null;
-  previous.close();
-  await delay(1000);
-  await openPage();
-  await send("Runtime.enable");
-}
-await send("Console.enable").catch(() => {});
+await sendRetry("Runtime.enable");
+await sendRetry("Console.enable").catch(() => {});
 
 let snapshot;
 for (let attempt = 0; attempt < 15; attempt += 1) {
@@ -450,6 +454,159 @@ if (value.bridge !== "object") problems.push(`Android bridge ${value.bridge}`);
 if (consoleErrors.length) problems.push(`console errors: ${consoleErrors.join(" | ")}`);
 
 mkdirSync("emulator-screenshots", { recursive: true });
+
+function paeth(left, up, upLeft) {
+  const estimate = left + up - upLeft;
+  const dl = Math.abs(estimate - left);
+  const du = Math.abs(estimate - up);
+  const dul = Math.abs(estimate - upLeft);
+  if (dl <= du && dl <= dul) return left;
+  if (du <= dul) return up;
+  return upLeft;
+}
+
+function readPng(file) {
+  const buf = readFileSync(file);
+  if (buf.length < 8 || buf.readUInt32BE(0) !== 0x89504e47) throw new Error("not a png");
+  let offset = 8;
+  let width = 0;
+  let height = 0;
+  let colorType = 0;
+  const idat = [];
+  while (offset + 8 <= buf.length) {
+    const length = buf.readUInt32BE(offset);
+    const type = buf.toString("ascii", offset + 4, offset + 8);
+    const data = buf.subarray(offset + 8, offset + 8 + length);
+    if (type === "IHDR") {
+      width = data.readUInt32BE(0);
+      height = data.readUInt32BE(4);
+      colorType = data[9];
+    } else if (type === "IDAT") {
+      idat.push(data);
+    } else if (type === "IEND") break;
+    offset += 12 + length;
+  }
+  const channels = colorType === 6 ? 4 : colorType === 2 ? 3 : 0;
+  const inflated = inflateSync(Buffer.concat(idat));
+  const stride = width * channels;
+  if (!channels || inflated.length < height * (stride + 1)) throw new Error(`png type ${colorType}`);
+  const out = Buffer.alloc(height * stride);
+  let src = 0;
+  for (let y = 0; y < height; y += 1) {
+    const filter = inflated[src];
+    src += 1;
+    const rowStart = src;
+    src += stride;
+    const prev = y === 0 ? null : out.subarray((y - 1) * stride, y * stride);
+    for (let i = 0; i < stride; i += 1) {
+      const raw = inflated[rowStart + i];
+      const left = i >= channels ? out[y * stride + i - channels] : 0;
+      const up = prev ? prev[i] : 0;
+      const upLeft = prev && i >= channels ? prev[i - channels] : 0;
+      let value = raw;
+      if (filter === 1) value = raw + left;
+      else if (filter === 2) value = raw + up;
+      else if (filter === 3) value = raw + ((left + up) >> 1);
+      else if (filter === 4) value = raw + paeth(left, up, upLeft);
+      else if (filter !== 0) throw new Error(`png filter ${filter}`);
+      out[y * stride + i] = value & 255;
+    }
+  }
+  return { width, height, channels, data: out };
+}
+
+function classifyInk(red, green, blue) {
+  if (red > 175 && green > 155 && blue > 125 && red - blue > 25) return "parchment";
+  if (red >= 82 && red <= 155 && green >= 52 && green <= 120 && blue >= 28 && blue <= 95 && red - blue > 26 && red - green > 8) return "road";
+  if (red >= 52 && red <= 102 && green >= 36 && green <= 82 && blue >= 20 && blue <= 70 && red - blue > 14 && red < 100) return "border";
+  const cool = red < 170 && green > 70 && blue > 70 && blue + 12 >= red && Math.abs(green - blue) < 40 && green + blue > red + 20;
+  if (cool && red >= 40 && red <= 95 && green >= 58 && blue >= red) return "coast";
+  // Lake fill stays lighter and redder than the river stroke, including a light grain pass.
+  if (cool && red >= 118) return "water";
+  if (cool && red < 118) return "river";
+  return "other";
+}
+
+async function assertMapInk(name, rules) {
+  const file = `emulator-screenshots/${name}.png`;
+  let png;
+  try {
+    png = readPng(file);
+  } catch (error) {
+    problems.push(`${name} ink unreadable: ${error.message}`);
+    return;
+  }
+  const frameReport = await send("Runtime.evaluate", {
+    expression: `(() => {
+      const rect = document.getElementById("fieldMap")?.getBoundingClientRect();
+      return JSON.stringify({
+        left: rect?.left || 0, top: rect?.top || 0,
+        width: rect?.width || 0, height: rect?.height || 0,
+        innerWidth: window.innerWidth, innerHeight: window.innerHeight
+      });
+    })()`,
+    returnByValue: true
+  });
+  let frame = {};
+  try { frame = JSON.parse(frameReport?.result?.value || "{}"); } catch { frame = {}; }
+  const offsetX = Math.max(0, png.width - (frame.innerWidth || png.width));
+  const offsetY = Math.max(0, png.height - (frame.innerHeight || png.height));
+  const left = Math.max(0, Math.round(offsetX + frame.left + 8));
+  const top = Math.max(0, Math.round(offsetY + frame.top + 8));
+  const right = Math.min(png.width, Math.round(offsetX + frame.left + frame.width - 52));
+  const bottom = Math.min(png.height, Math.round(offsetY + frame.top + frame.height - 8));
+  const counts = { parchment: 0, water: 0, road: 0, river: 0, coast: 0, border: 0, other: 0, sampled: 0 };
+  const ink = (x, y) => {
+    const index = (y * png.width + x) * png.channels;
+    return classifyInk(png.data[index], png.data[index + 1], png.data[index + 2]);
+  };
+  if (right - left < 40 || bottom - top < 40) {
+    problems.push(`${name} map crop is empty`);
+    return;
+  }
+  for (let y = top; y < bottom; y += 1) {
+    for (let x = left; x < right; x += 1) counts[ink(x, y)] += 1;
+  }
+  counts.sampled = (right - left) * (bottom - top);
+  let sharp = 0;
+  let soft = 0;
+  const edge = (x, y, dx, dy) => {
+    const aheadX = x + dx;
+    const aheadY = y + dy;
+    if (aheadX < left || aheadY < top || aheadX >= right || aheadY >= bottom) return;
+    if (ink(aheadX, aheadY) === "water") return;
+    let dist = 0;
+    for (let hop = 1; hop <= 14; hop += 1) {
+      const nx = x + dx * hop;
+      const ny = y + dy * hop;
+      if (nx < left || ny < top || nx >= right || ny >= bottom) break;
+      const kind = ink(nx, ny);
+      if (kind === "parchment") { dist = hop; break; }
+      if (kind === "water") break;
+    }
+    if (dist >= 1 && dist <= 5) sharp += 1;
+    else if (dist >= 9) soft += 1;
+  };
+  for (let y = top + 2; y < bottom - 2; y += 2) {
+    for (let x = left + 2; x < right - 2; x += 2) {
+      if (ink(x, y) !== "water") continue;
+      edge(x, y, 1, 0);
+      edge(x, y, 0, 1);
+    }
+  }
+  counts.sharp = sharp;
+  counts.soft = soft;
+  console.log("ink", name, JSON.stringify(counts));
+  for (const key of ["road", "river", "border", "water"]) {
+    if (rules[key] && counts[key] < rules[key]) {
+      problems.push(`${name} ${key} pixels ${counts[key]} < ${rules[key]} (blank map)`);
+    }
+  }
+  if (rules.coast && (sharp < 4 || soft > sharp)) {
+    problems.push(`${name} coast is soft: sharp ${sharp} soft ${soft}`);
+  }
+}
+
 function shot(name) {
   const result = spawnSync("adb", ["exec-out", "screencap", "-p"], { encoding: "buffer", maxBuffer: 12 * 1024 * 1024 });
   if (result.status !== 0 || !result.stdout?.length || result.stdout[0] !== 0x89) {
@@ -506,11 +663,11 @@ if (!progressBody.includes("Connect Steam") || /42\.5|Back in the Mud/.test(prog
   problems.push(`progress screen did not show the empty state: ${progressBody.slice(0, 180)}`);
 }
 await delay(400);
-shot("progress-empty-1.7.2");
+shot("progress-empty-1.7.6");
 
 await send("Page.enable").catch(() => {});
 async function mapShot(name, elementId, scale, x, y, detailName) {
-  const detail = await send("Runtime.evaluate", {
+  const detail = await sendRetry("Runtime.evaluate", {
     expression: `(async () => {
       const view = ${JSON.stringify(elementId === "hiddenMap" ? "hidden" : "map")};
       if (typeof setView === "function") setView(view);
@@ -518,10 +675,14 @@ async function mapShot(name, elementId, scale, x, y, detailName) {
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       map?.frontierReflow?.();
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const started = Date.now();
+      while (map && map._vectorsReady !== true && Date.now() - started < 8000) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
       if (map && map.frontierZoomTo) map.frontierZoomTo(${scale}, ${x}, ${y});
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const rect = map?.getBoundingClientRect();
-      return JSON.stringify({ detail: map?.dataset.detail || "missing", zoom: map?.frontierMap?.getZoom(), width: rect?.width || 0, height: rect?.height || 0 });
+      return JSON.stringify({ detail: map?.dataset.detail || "missing", zoom: map?.frontierMap?.getZoom(), width: rect?.width || 0, height: rect?.height || 0, vectors: map?._vectors?.getLayers?.().length || 0 });
     })()`,
     awaitPromise: true,
     returnByValue: true
@@ -536,13 +697,65 @@ async function mapShot(name, elementId, scale, x, y, detailName) {
   }
   console.log(name, JSON.stringify(parsed));
   if (reported !== detailName) problems.push(`${name} detail ${reported}`);
+  if (elementId === "fieldMap" && !(parsed.vectors > 20)) problems.push(`${name} vectors ${parsed.vectors}`);
   await delay(900);
   shot(name);
   return parsed;
 }
-await mapShot("map-full-1.7.2", "fieldMap", 1, 50, 50, "far");
-await mapShot("map-mid-1.7.2", "fieldMap", 2.5, 70, 55, "mid");
-await mapShot("map-close-1.7.2", "fieldMap", 4.2, 72, 46, "close");
+await mapShot("map-full-1.7.6", "fieldMap", 1, 50, 50, "far");
+await assertMapInk("map-full-1.7.6", { road: 25, river: 10, border: 6 });
+await mapShot("map-mid-1.7.6", "fieldMap", 2.5, 62, 37, "mid");
+await assertMapInk("map-mid-1.7.6", { road: 40, river: 15, border: 8 });
+await mapShot("map-close-1.7.6", "fieldMap", 4.2, 72, 46, "close");
+await assertMapInk("map-close-1.7.6", { road: 12 });
+async function maxShot(name, lat, lng) {
+  const detail = await sendRetry("Runtime.evaluate", {
+    expression: `(async () => {
+      if (typeof setView === "function") setView("map");
+      window.frontierShowAccuracy?.(false);
+      const detail = document.getElementById("mapDetail");
+      detail?.classList.remove("is-open");
+      const layers = document.querySelector("#mapView .map-sheet");
+      if (layers) layers.hidden = true;
+      const map = document.getElementById("fieldMap");
+      const started = Date.now();
+      while (map && map._vectorsReady !== true && Date.now() - started < 8000) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      map?.frontierMap?.setView([${lat}, ${lng}], map.frontierMap.getMaxZoom(), { animate: false });
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      return JSON.stringify({
+        zoom: map?.frontierMap?.getZoom(),
+        max: map?.frontierMap?.getMaxZoom(),
+        detail: map?.dataset.detail || "",
+        vectors: map?._vectors?.getLayers?.().length || 0,
+        card: Boolean(detail?.classList.contains("is-open")),
+        accuracy: Boolean(map?._accuracyOn)
+      });
+    })()`,
+    awaitPromise: true,
+    returnByValue: true
+  });
+  let parsed = {};
+  try { parsed = JSON.parse(detail?.result?.value || "{}"); } catch { parsed = {}; }
+  console.log(name, JSON.stringify(parsed));
+  if (!(parsed.zoom >= 6.5) || parsed.detail !== "close" || !(parsed.vectors > 20) || parsed.card || parsed.accuracy) {
+    problems.push(`${name} ${JSON.stringify(parsed)}`);
+  }
+  await delay(900);
+  shot(name);
+}
+// The road beside Valentine is just outside a zoom-7 frame centered on the
+// town label. This center keeps that road in frame. The river and county
+// border are farther south, so the mid-zoom shot is what asserts them.
+await maxShot("map-max-valentine-1.7.6", -52.2, 109.4);
+await assertMapInk("map-max-valentine-1.7.6", { road: 12 });
+await maxShot("map-max-saintdenis-1.7.6", -86.3787, 152.6896);
+await assertMapInk("map-max-saintdenis-1.7.6", { water: 80, coast: true });
+await maxShot("map-max-blackwater-1.7.6", -82.9581, 99.7447);
+await assertMapInk("map-max-blackwater-1.7.6", { water: 80, coast: true });
+await maxShot("map-max-strawberry-1.7.6", -70.03, 84.3196);
+await assertMapInk("map-max-strawberry-1.7.6", { road: 12 });
 
 const layoutReport = await send("Runtime.evaluate", {
   expression: `(() => {
@@ -580,37 +793,90 @@ await send("Runtime.evaluate", {
   returnByValue: true
 });
 await delay(500);
-shot("map-controls-1.7.2");
-await send("Runtime.evaluate", {
+const layersReport = await send("Runtime.evaluate", {
   expression: `(() => {
-    document.querySelector("#mapView .map-layers-toggle")?.click();
-    const marker = document.querySelector("#mapMarkers .map-marker, #mapMarkers .map-cluster, #mapMarkers .map-dot");
-    marker?.click();
-    return marker ? "card" : "no-marker";
+    const row = document.querySelector("#mapTags .layer-all");
+    const names = [...document.querySelectorAll("#mapTags .layer-name")].map(node => node.textContent);
+    return JSON.stringify({
+      name: row?.querySelector(".layer-name")?.textContent || "",
+      count: row?.querySelector(".layer-count")?.textContent || "",
+      pressed: row?.getAttribute("aria-pressed") || "",
+      names
+    });
   })()`,
   returnByValue: true
 });
-await delay(600);
-const cardReport = await send("Runtime.evaluate", {
-  expression: `(() => {
-    const card = document.getElementById("mapDetail")?.getBoundingClientRect();
-    const nav = document.querySelector(".bottom-nav")?.getBoundingClientRect();
-    return JSON.stringify({ open: document.getElementById("mapDetail")?.classList.contains("is-open"), cardBottom: card?.bottom, navTop: nav?.top, cardHeight: card?.height });
-  })()`,
-  returnByValue: true
-});
-let cardLayout = {};
-try { cardLayout = JSON.parse(cardReport?.result?.value || "{}"); } catch { cardLayout = {}; }
-console.log("card", JSON.stringify(cardLayout));
-if (!cardLayout.open || !(cardLayout.cardBottom <= cardLayout.navTop + 2) || !(cardLayout.cardHeight > 40)) {
-  problems.push(`marker card is not above the nav: ${JSON.stringify(cardLayout)}`);
+let layersLayout = {};
+try { layersLayout = JSON.parse(layersReport?.result?.value || "{}"); } catch { layersLayout = {}; }
+console.log("layers", JSON.stringify(layersLayout));
+if (layersLayout.name !== "All" || layersLayout.pressed !== "true" || !(Number(layersLayout.count) > 0) || (layersLayout.names || []).includes("None")) {
+  problems.push(`layers sheet ${JSON.stringify(layersLayout)}`);
 }
-shot("map-card-1.7.2");
+shot("layers-sheet-1.7.6");
+await send("Runtime.evaluate", {
+  expression: `(() => { document.querySelector("#mapView .map-layers-toggle")?.click(); return "layers-closed"; })()`,
+  returnByValue: true
+});
+
+async function openMarker(id) {
+  const report = await send("Runtime.evaluate", {
+    expression: `(() => {
+      if (typeof setView === "function") setView("map");
+      const sheet = document.querySelector("#mapView .map-sheet");
+      if (sheet) sheet.hidden = true;
+      const item = (state.mapLocations || []).find(row => row.id === ${JSON.stringify(id)});
+      if (!item || typeof showMapDetail !== "function") return JSON.stringify({ error: "missing" });
+      const node = document.getElementById("fieldMap");
+      const map = node?.frontierMap;
+      if (map && Number.isFinite(item.lat)) {
+        map.setView([item.lat, item.lng], Math.min(map.getMaxZoom(), (node._fitZoom || 1) + 1.6), { animate: false });
+      }
+      showMapDetail(item);
+      const detail = document.getElementById("mapDetail");
+      const card = detail?.getBoundingClientRect();
+      const nav = document.querySelector(".bottom-nav")?.getBoundingClientRect();
+      return JSON.stringify({
+        open: Boolean(detail?.classList.contains("is-open")),
+        text: detail?.innerText || "",
+        title: item.title,
+        sourceCollapsed: Boolean(detail?.querySelector(".map-source")) && !detail.querySelector(".map-source")?.open,
+        cardBottom: card?.bottom, navTop: nav?.top, cardHeight: card?.height
+      });
+    })()`,
+    returnByValue: true
+  });
+  let parsed = {};
+  try { parsed = JSON.parse(report?.result?.value || "{}"); } catch { parsed = { error: "parse" }; }
+  console.log("card", id, JSON.stringify({ ...parsed, text: String(parsed.text || "").slice(0, 280) }));
+  return parsed;
+}
+const bullCard = await openMarker("leg-bull-gator");
+if (!bullCard.open || !(bullCard.cardBottom <= bullCard.navTop + 2) || !(bullCard.cardHeight > 40)) {
+  problems.push(`marker card is not above the nav: ${JSON.stringify(bullCard)}`);
+}
+if (!/Bayou Nwa,\s*Lemoyne/.test(bullCard.text || "") || /RDOMap|Story mode/.test(bullCard.text || "") || !/Lakay/.test(bullCard.text || "")) {
+  problems.push(`bull gator card copy: ${String(bullCard.text || "").slice(0, 240)}`);
+}
+if (!bullCard.sourceCollapsed) problems.push("source link is not inside a collapsed Source section");
+await delay(400);
+shot("map-card-bullgator-1.7.6");
+const arabianCard = await openMarker("horse-white-arabian");
+if (!/Lake Isabella/.test(arabianCard.text || "") || /RDOMap|Published White Arabian marker/.test(arabianCard.text || "")) {
+  problems.push(`white arabian card copy: ${String(arabianCard.text || "").slice(0, 240)}`);
+}
+await delay(400);
+shot("map-card-whitearabian-1.7.6");
+const gunsmithCard = await openMarker("gunsmith-valentine");
+if (!/Valentine,\s*New Hanover/.test(gunsmithCard.text || "") || /Published shop coordinate/.test(gunsmithCard.text || "") || !/ammunition/i.test(gunsmithCard.text || "")) {
+  problems.push(`gunsmith card copy: ${String(gunsmithCard.text || "").slice(0, 240)}`);
+}
+await delay(400);
+shot("map-card-gunsmith-1.7.6");
 
 spawnSync("adb", ["shell", "settings", "put", "system", "accelerometer_rotation", "0"]);
 spawnSync("adb", ["shell", "settings", "put", "system", "user_rotation", "1"]);
 await delay(1200);
-const landscape = await send("Runtime.evaluate", {
+const landscape = await sendRetry("Runtime.evaluate", {
   expression: `(async () => {
     if (typeof setView === "function") setView("map");
     const map = document.getElementById("fieldMap");
@@ -628,7 +894,7 @@ const landscape = await send("Runtime.evaluate", {
   })()`,
   awaitPromise: true,
   returnByValue: true
-});
+}, 60000);
 let landscapeLayout = {};
 try { landscapeLayout = JSON.parse(landscape?.result?.value || "{}"); } catch { landscapeLayout = {}; }
 console.log("landscape", JSON.stringify(landscapeLayout));
@@ -638,14 +904,31 @@ if (!landscapeLayout.open || !(landscapeLayout.cardBottom <= landscapeLayout.nav
 }
 if (landscapeSpread > 8) problems.push(`landscape nav wrapped: ${JSON.stringify(landscapeLayout.tops)}`);
 await delay(700);
-shot("map-landscape-card-1.7.2");
+shot("map-landscape-card-1.7.6");
 spawnSync("adb", ["shell", "settings", "put", "system", "user_rotation", "0"]);
 await delay(800);
 
 await show("hidden");
-shot("hidden-1.7.2");
+shot("hidden-1.7.6");
+await sendRetry("Runtime.evaluate", {
+  expression: `(() => {
+    if (typeof setView === "function") setView("settings");
+    const status = document.getElementById("linkStatus");
+    const code = document.getElementById("linkCode");
+    if (status) status.textContent = "Frontier Link is paired. Capture stays off until you turn it on in the helper.";
+    if (code) {
+      code.hidden = false;
+      code.textContent = "482913";
+    }
+    document.getElementById("linkCard")?.scrollIntoView({ block: "center", behavior: "auto" });
+    return "ok";
+  })()`,
+  returnByValue: true
+});
+await delay(500);
+shot("settings-link-paired-1.7.6");
 await show("home");
-shot("home-1.7.2");
+shot("home-1.7.6");
 const homeReport = await send("Runtime.evaluate", {
   expression: `(() => {
     const home = document.getElementById("homeView");
@@ -663,7 +946,6 @@ try { homeLayout = JSON.parse(homeReport?.result?.value || "{}"); } catch { home
 if (!homeLayout.home || homeLayout.progress || !homeLayout.grid) problems.push(`home screen ${JSON.stringify(homeLayout)}`);
 
 await show("settings");
-shot("settings-steam-1.7.2");
 const pillReport = await send("Runtime.evaluate", {
   expression: `(() => document.getElementById("onlineDot")?.innerText || "")()`,
   returnByValue: true
@@ -678,36 +960,54 @@ const steamCopy = await send("Runtime.evaluate", {
 if (!String(steamCopy?.result?.value || "").includes("Connect Steam")) problems.push("settings steam card missing");
 
 const places = [
-  ["white-arabian", -37.6706, 82.2251],
-  ["jack-hall", -40.8291, 136.8836],
-  ["bull-gator", -75.6282, 144.9287],
-  ["valentine", -53.602, 108.3971],
-  ["saint-denis", -86.3787, 152.6896],
-  ["blackwater", -82.9581, 99.7447],
-  ["rhodes", -83.6534, 130.6434],
-  ["strawberry", -70.03, 84.3196],
-  ["armadillo", -104.3897, 53.4547],
-  ["tumbleweed", -109.3272, 26.8317]
+  ["white-arabian", "horse-white-arabian", -37.6706, 82.2251],
+  ["jack-hall", "treasure-jack-hall", -40.8291, 136.8836],
+  ["bull-gator", "leg-bull-gator", -75.6282, 144.9287],
+  ["valentine", "gunsmith-valentine", -51.509, 106.9164],
+  ["saint-denis", "gunsmith-saint-denis", -83.5753, 153.4529],
+  ["blackwater", "horse-rose-grey-arabian", -82.9581, 99.7447],
+  ["rhodes", "gunsmith-rhodes", -84.1323, 131.8113],
+  ["strawberry", "", -70.03, 84.3196],
+  ["armadillo", "", -104.3897, 53.4547],
+  ["tumbleweed", "gunsmith-tumbleweed", -109.3272, 26.8317]
 ];
-await send("Runtime.evaluate", {
-  expression: `(() => { if (typeof setView === "function") setView("map"); window.frontierShowAccuracy?.(true); return "tiles"; })()`,
-  returnByValue: true
-});
-for (const [name, lat, lng] of places) {
-  await send("Runtime.evaluate", {
+for (const [name, id, lat, lng] of places) {
+  const frame = await sendRetry("Runtime.evaluate", {
     expression: `(() => {
-      const map = document.getElementById("fieldMap")?.frontierMap;
-      map?.setView([${lat}, ${lng}], Math.min(map.getMaxZoom(), (document.getElementById("fieldMap")._fitZoom || 1) + 2.4), { animate: false });
-      return "ok";
+      if (typeof setView === "function") setView("map");
+      window.frontierShowAccuracy?.(false);
+      const detail = document.getElementById("mapDetail");
+      detail?.classList.remove("is-open");
+      const layers = document.querySelector("#mapView .map-sheet");
+      if (layers) layers.hidden = true;
+      const item = ${JSON.stringify(id)} ? (state.mapLocations || []).find(row => row.id === ${JSON.stringify(id)}) : null;
+      state.selectedMapId = item ? item.id : null;
+      if (typeof renderMap === "function") renderMap();
+      const node = document.getElementById("fieldMap");
+      const map = node?.frontierMap;
+      const point = item && Number.isFinite(item.lat) ? [item.lat, item.lng] : [${lat}, ${lng}];
+      map?.setView(point, Math.min(map.getMaxZoom(), (node?._fitZoom || 1) + 2.2), { animate: false });
+      detail?.classList.remove("is-open");
+      const labels = [...(node?.querySelectorAll(".map-label") || [])].map(node => node.textContent);
+      return JSON.stringify({
+        title: item?.title || "town-label",
+        card: Boolean(detail?.classList.contains("is-open")),
+        accuracy: Boolean(node?._accuracyOn),
+        labels
+      });
     })()`,
     returnByValue: true
-  });
+  }, 60000);
+  let frameReport = {};
+  try { frameReport = JSON.parse(frame?.result?.value || "{}"); } catch { frameReport = {}; }
+  console.log("accuracy", name, JSON.stringify(frameReport));
+  if (frameReport.card || frameReport.accuracy) problems.push(`accuracy frame ${name} still covered: ${JSON.stringify(frameReport)}`);
+  if (id && frameReport.title === "town-label") problems.push(`accuracy frame ${name} missed its marker`);
   await delay(900);
   shot(`accuracy-part-${name}`);
 }
-await mapShot("hidden-zoom-mid", "hiddenMap", 2.5, 55, 41, "mid");
 await sendRetry("Runtime.evaluate", {
-  expression: `(() => { window.frontierShowAccuracy?.(false); if (typeof setView === "function") setView("map"); return "tiles-off"; })()`,
+  expression: `(() => { window.frontierShowAccuracy?.(false); if (typeof setView === "function") setView("map"); const detail = document.getElementById("mapDetail"); detail?.classList.remove("is-open"); return "map-ready"; })()`,
   returnByValue: true
 });
 
@@ -761,7 +1061,7 @@ if (!gestureReport.error && gestureReport.width) {
   await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: cx, y: cy, id: 1 }] });
   await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   await delay(250);
-  const gestureEnd = await send("Runtime.evaluate", {
+  const gestureEnd = await sendRetry("Runtime.evaluate", {
     expression: `(() => {
       const map = document.getElementById("fieldMap").frontierMap;
       const center = map.getCenter();
@@ -778,7 +1078,7 @@ console.log("gesture", JSON.stringify(gestureReport));
 if (!(gestureReport.pan > 0.2)) problems.push(`pan ${JSON.stringify(gestureReport)}`);
 if (!(gestureReport.pinched > gestureReport.zoom)) problems.push(`pinch zoom ${JSON.stringify(gestureReport)}`);
 
-const health = await send("Runtime.evaluate", {
+const health = await sendRetry("Runtime.evaluate", {
   expression: `fetch("https://frontier-guide-api.onrender.com/api/health", { cache: "no-store" }).then(async response => JSON.stringify({ status: response.status, body: await response.json() })).catch(error => JSON.stringify({ error: String(error) }))`,
   awaitPromise: true,
   returnByValue: true
@@ -788,7 +1088,6 @@ try { healthReport = JSON.parse(health?.result?.value || "{}"); } catch { health
 console.log("health", JSON.stringify(healthReport));
 if (healthReport.body?.authorized !== true) problems.push(`production health was not authorized: ${JSON.stringify(healthReport)}`);
 
-await reconnectDevtools();
 await show("ask");
 await sendRetry("Runtime.evaluate", {
   expression: `(() => { document.getElementById("question").value = "Where is the White Arabian? One sentence."; document.getElementById("askForm").requestSubmit(); return "sent"; })()`,
