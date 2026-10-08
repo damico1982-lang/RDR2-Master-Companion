@@ -129,7 +129,71 @@ test("progress uses the recorded Steam responses and a private profile is explai
     assert.equal(response.status, 403);
     const body = await response.json();
     assert.equal(body.code, "steam_private");
-    assert.match(body.error, /Game details to Public/);
+    assert.match(body.error, /Game details, to Public/);
+  });
+});
+
+test("empty Steam stats ask for public game details", async () => {
+  const fetchImpl = async url => {
+    if (String(url).includes("GetPlayerAchievements")) {
+      return Response.json({ playerstats: { steamID: "76561198000000000", success: true, achievements: [] } });
+    }
+    return Response.json({});
+  };
+  const app = createApp({
+    env: { FRONTIER_CLIENT_TOKEN: "frontier-secret", STEAM_API_KEY: "steam-test-key" },
+    fetchImpl,
+    logger: silentLogger
+  });
+  await withServer(app, async baseUrl => {
+    const response = await fetch(`${baseUrl}/api/steam/progress?steamId=76561198000000000`, {
+      headers: { "x-frontier-key": "frontier-secret" }
+    });
+    assert.equal(response.status, 403);
+    const body = await response.json();
+    assert.equal(body.code, "steam_empty");
+    assert.match(body.error, /Game details, to Public/);
+  });
+});
+
+test("a connected Steam profile includes the persona name and avatar", async () => {
+  const fetchImpl = async url => {
+    if (String(url).includes("GetPlayerSummaries")) {
+      return Response.json({
+        response: {
+          players: [{
+            steamid: "76561198000000000",
+            personaname: "Arthur",
+            avatarmedium: "https://avatars.steamstatic.com/arthur.jpg"
+          }]
+        }
+      });
+    }
+    return Response.json({});
+  };
+  const app = createApp({
+    env: { FRONTIER_CLIENT_TOKEN: "frontier-secret", STEAM_API_KEY: "steam-test-key" },
+    fetchImpl,
+    logger: silentLogger
+  });
+  await withServer(app, async baseUrl => {
+    const response = await fetch(`${baseUrl}/api/steam/profile?steamId=76561198000000000`, {
+      headers: { "x-frontier-key": "frontier-secret" }
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      steamId: "76561198000000000",
+      personaName: "Arthur",
+      avatar: "https://avatars.steamstatic.com/arthur.jpg"
+    });
+  });
+  const missing = createApp({ env: { FRONTIER_CLIENT_TOKEN: "frontier-secret" }, logger: silentLogger });
+  await withServer(missing, async baseUrl => {
+    const response = await fetch(`${baseUrl}/api/steam/profile?steamId=76561198000000000`, {
+      headers: { "x-frontier-key": "frontier-secret" }
+    });
+    assert.equal(response.status, 503);
+    assert.equal((await response.json()).code, "steam_disabled");
   });
 });
 

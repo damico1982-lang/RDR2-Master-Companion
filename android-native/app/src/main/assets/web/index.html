@@ -296,9 +296,13 @@
           <div id="settingsMsg" class="muted settings-msg"></div>
         </div>
         <div class="settings-card" id="steamCard">
-          <div class="setup-note"><b>Steam</b><p>Connect Steam signs in with Steam OpenID and stores your SteamID64. Achievements and hours come from the Steam Web API for Red Dead Redemption 2 (app 1174180). Your Steam profile game details must be public. The Steam Web API key stays on the server as STEAM_API_KEY. Until that key is set, Progress stays empty. It does not keep a saved copy.</p></div>
+          <div class="setup-note"><b>Steam</b><p>Connect Steam signs in with Steam OpenID and stores your SteamID64. Achievements and hours come from the Steam Web API for Red Dead Redemption 2 (app 1174180). Your Steam profile game details must be public. The Steam Web API key stays on the server as STEAM_API_KEY. <span id="steamKeyNote">Until that key is set, Progress stays empty. It does not keep a saved copy.</span></p></div>
+          <div id="steamIdentity" class="steam-identity" hidden>
+            <img id="steamAvatar" alt="" hidden />
+            <b id="steamPersona"></b>
+          </div>
           <p id="steamStatus" class="muted">Steam is not connected.</p>
-          <div class="settings-actions"><button id="connectSteam" class="send" type="button">Connect Steam</button><button id="disconnectSteam" class="ghost" type="button">Disconnect</button></div>
+          <div class="settings-actions"><button id="connectSteam" class="send" type="button">Connect Steam</button><button id="disconnectSteam" class="ghost" type="button" hidden>Disconnect</button></div>
         </div>
         <div class="settings-card" id="linkCard">
           <div class="setup-note"><b>Frontier Link</b><p>The Windows helper pairs with this phone by the code below. While its capture switch is on, it captures only the Red Dead Redemption 2 window, sends a few frames a minute to Live Coach, and can mark a collectible when the on-screen pickup text names it. It does not read game memory, inject code, or touch the game process. Capture is off until you turn it on.</p></div>

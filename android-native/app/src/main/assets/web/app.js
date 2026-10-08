@@ -157,6 +157,7 @@ async function requestJson(path, options = {}) {
   if (!response.ok) {
     const error = new Error(data.error || `Server returned ${response.status}.`);
     error.status = response.status;
+    error.code = data.code || "";
     throw error;
   }
   return data;
@@ -2211,6 +2212,8 @@ async function checkStatus(showMessage = false) {
       headers: serverHeaders()
     });
 
+    applySteamKeyNote(Boolean(data.steam?.configured));
+    if (data.steam?.configured) refreshSteamProfile();
     if (data.authRequired && !data.authorized) {
       setConnectionState("warning", "Access key needed");
       if (showMessage) $("#settingsMsg").textContent = "Server found, but the access key is missing or incorrect.";
@@ -3601,6 +3604,23 @@ function formatUnlock(unix) {
   return `Unlocked ${date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}`;
 }
 
+function applySteamKeyNote(configured) {
+  const note = $("#steamKeyNote");
+  if (note) note.hidden = Boolean(configured);
+}
+
+function savedSteamProfile() {
+  const id = steamId();
+  if (!id) return null;
+  try {
+    const data = JSON.parse(localStorage.getItem("fg_steam_profile") || "null");
+    if (!data || data.steamId !== id) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 function renderSteamProgress(data, note = "") {
   const summary = $("#progressSummary");
   const list = $("#progressList");
@@ -3608,16 +3628,22 @@ function renderSteamProgress(data, note = "") {
   summary.replaceChildren();
   summary.classList.toggle("progress-empty", !data);
   if (!data) {
+    const linked = Boolean(steamId());
     const heading = document.createElement("h3");
-    heading.textContent = "Connect Steam";
+    heading.textContent = linked ? "Steam progress" : "Connect Steam";
     const copy = document.createElement("p");
-    copy.textContent = note || "Sign in from Settings to load Red Dead Redemption 2 achievements and hours. Nothing is shown here until a Steam account is linked.";
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "send";
-    button.textContent = "Connect Steam";
-    button.addEventListener("click", () => setView("settings"));
-    summary.append(heading, copy, button);
+    copy.textContent = note || (linked
+      ? "Achievements appear after a sync."
+      : "Sign in from Settings to load Red Dead Redemption 2 achievements and hours. Nothing is shown here until a Steam account is linked.");
+    summary.append(heading, copy);
+    if (!linked) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "send";
+      button.textContent = "Connect Steam";
+      button.addEventListener("click", () => setView("settings"));
+      summary.append(button);
+    }
   } else {
     const heading = document.createElement("p");
     const hours = Number.isFinite(Number(data.hoursPlayed)) ? `${data.hoursPlayed} hours` : "Hours not shared";
@@ -3666,8 +3692,26 @@ function renderSteamStatus() {
   const node = $("#steamStatus");
   if (!node) return;
   const id = steamId();
+  const profile = savedSteamProfile();
+  const name = profile?.personaName || "";
+  const picture = profile?.avatar || "";
+  const connect = $("#connectSteam");
+  const disconnect = $("#disconnectSteam");
+  const identity = $("#steamIdentity");
+  const avatar = $("#steamAvatar");
+  const persona = $("#steamPersona");
+  if (connect) connect.textContent = id ? "Refresh" : "Connect Steam";
+  if (disconnect) disconnect.hidden = !id;
+  if (identity) identity.hidden = !id || (!name && !picture);
+  if (persona) persona.textContent = name;
+  if (avatar) {
+    avatar.hidden = !picture;
+    avatar.alt = name ? `${name} on Steam` : "";
+    if (picture) avatar.src = picture;
+    avatar.onerror = () => { avatar.hidden = true; };
+  }
   node.textContent = id
-    ? `Connected as SteamID64 ${id}. Game details must be public or achievements stay hidden.`
+    ? `Connected as ${name || `SteamID64 ${id}`}. Game details must be public or achievements stay hidden.`
     : "Steam is not connected. After you connect, game details must be public.";
   const link = $("#linkStatus");
   if (link && localStorage.getItem("fg_link_token") && link.textContent === "Not paired.") {
@@ -3695,6 +3739,11 @@ async function syncSteamProgress() {
     localStorage.setItem("fg_steam_progress", JSON.stringify(data));
     renderSteamProgress(data);
   } catch (error) {
+    if (error.code === "steam_disabled") applySteamKeyNote(false);
+    if (error.status === 403 || error.code === "steam_private" || error.code === "steam_empty") {
+      renderSteamProgress(null, "Set Steam Privacy, Game details, to Public.");
+      return;
+    }
     const message = error.status === 404
       ? "This server does not have Steam progress yet. No saved numbers are shown."
       : (error.message || "Steam sync failed.");
@@ -3705,6 +3754,23 @@ async function syncSteamProgress() {
     }
     renderSteamProgress(cached, message);
   }
+}
+
+async function refreshSteamProfile() {
+  const id = steamId();
+  if (!id || !settings.api || settings.serverMode === "offline") return;
+  try {
+    const data = await requestJson(`/api/steam/profile?steamId=${encodeURIComponent(id)}`, {
+      cache: "no-store",
+      headers: serverHeaders()
+    });
+    localStorage.setItem("fg_steam_profile", JSON.stringify({
+      steamId: id,
+      personaName: data.personaName || "",
+      avatar: data.avatar || ""
+    }));
+    renderSteamStatus();
+  } catch { /* the SteamID64 line stays until Steam shares a name */ }
 }
 
 async function pullLinkFrame() {
@@ -3804,6 +3870,13 @@ $("#refreshProgress")?.addEventListener("click", () => syncSteamProgress());
 
 $("#connectSteam")?.addEventListener("click", async () => {
   const status = $("#steamStatus");
+  if (steamId()) {
+    if (status) status.textContent = "Refreshing Steam progress.";
+    await refreshSteamProfile();
+    await syncSteamProgress();
+    renderSteamStatus();
+    return;
+  }
   if (!settings.api || settings.serverMode === "offline") {
     if (status) status.textContent = "Choose Auto or Custom and save the server before connecting Steam.";
     return;
@@ -3827,6 +3900,7 @@ $("#connectSteam")?.addEventListener("click", async () => {
       if (data.status === "connected" && data.steamId) {
         localStorage.setItem("fg_steam_id", data.steamId);
         renderSteamStatus();
+        refreshSteamProfile();
         syncSteamProgress();
         return;
       }
@@ -3837,7 +3911,10 @@ $("#connectSteam")?.addEventListener("click", async () => {
 
 $("#disconnectSteam")?.addEventListener("click", () => {
   localStorage.removeItem("fg_steam_id");
+  localStorage.removeItem("fg_steam_profile");
+  try { localStorage.removeItem("fg_steam_progress"); } catch { /* nothing saved */ }
   renderSteamStatus();
+  renderSteamProgress(null);
 });
 
 $("#startLinkPair")?.addEventListener("click", async () => {

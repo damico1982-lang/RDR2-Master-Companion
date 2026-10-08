@@ -100,7 +100,7 @@ test("GET / serves the installable Frontier Guide web app", async () => {
 
     const api = await fetch(`${baseUrl}/api`);
     assert.equal(api.status, 200);
-    assert.deepEqual((await api.json()).endpoints, ["/api/health", "/api/ask", "/api/speak", "/api/coach", "/api/live-update", "/api/steam/progress", "/api/link/pair"]);
+    assert.deepEqual((await api.json()).endpoints, ["/api/health", "/api/ask", "/api/speak", "/api/coach", "/api/live-update", "/api/steam/profile", "/api/steam/progress", "/api/link/pair"]);
   });
 });
 

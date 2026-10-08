@@ -16,7 +16,9 @@ import {
   mergeAchievementProgress,
   parsePlaytimeHours,
   steamApiConfigured,
+  steamPersona,
   steamProfileIsPrivate,
+  steamStatsAreEmpty,
   verifySteamAssertion
 } from "./steam.mjs";
 
@@ -283,6 +285,24 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
     }
   });
 
+  app.get("/api/steam/profile", requireClientToken, async (req, res) => {
+    const steamId = String(req.query.steamId || "");
+    if (!/^\d{17}$/.test(steamId)) return res.status(400).json({ error: "A 17-digit SteamID64 is required." });
+    if (!steamKey) {
+      return res.status(503).json({
+        error: "Steam sync is off until STEAM_API_KEY is set on the server.",
+        code: "steam_disabled"
+      });
+    }
+    try {
+      const summary = await steamJson("ISteamUser/GetPlayerSummaries/v2/", { steamids: steamId });
+      return res.json({ steamId, ...steamPersona(summary.body) });
+    } catch (error) {
+      logger.error(error);
+      return res.status(502).json({ error: "Steam could not be reached.", code: "steam_unavailable" });
+    }
+  });
+
   app.get("/api/steam/session", requireClientToken, (req, res) => {
     const nonce = String(req.query.nonce || "");
     return res.json(steamNonce.read(nonce));
@@ -300,10 +320,11 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
     }
     try {
       const player = await steamJson("ISteamUserStats/GetPlayerAchievements/v1/", { steamid: steamId, appid: RDR2_APPID });
-      if (steamProfileIsPrivate(player.status, player.body)) {
+      if (steamProfileIsPrivate(player.status, player.body) || steamStatsAreEmpty(player.body)) {
+        const empty = steamStatsAreEmpty(player.body);
         return res.status(403).json({
-          error: "Steam profile game details must be public. In Steam, open your profile, Edit Profile, Privacy Settings, and set Game details to Public.",
-          code: "steam_private",
+          error: "Set Steam Privacy, Game details, to Public.",
+          code: empty ? "steam_empty" : "steam_private",
           appId: RDR2_APPID
         });
       }
@@ -704,7 +725,7 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
       name: "Frontier Guide API",
       ok: true,
       version: APP_VERSION,
-      endpoints: ["/api/health", "/api/ask", "/api/speak", "/api/coach", "/api/live-update", "/api/steam/progress", "/api/link/pair"]
+      endpoints: ["/api/health", "/api/ask", "/api/speak", "/api/coach", "/api/live-update", "/api/steam/profile", "/api/steam/progress", "/api/link/pair"]
     });
   });
 
