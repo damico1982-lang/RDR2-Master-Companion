@@ -4,6 +4,7 @@ import cors from "cors";
 import express from "express";
 import QRCode from "qrcode";
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { loadFieldNotes, relevantNotes } from "./field-notes.mjs";
 import { parseSseBuffer } from "./sse.mjs";
 import { matchSightings } from "./detect.mjs";
@@ -24,7 +25,7 @@ const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_TTS_MODEL = "gpt-4o-mini-tts";
 const DEFAULT_TTS_VOICE = "onyx";
 const DEFAULT_TTS_INSTRUCTIONS = "Speak as a deep, warm Black man in his thirties or forties. Low chest voice, unhurried, dry humor, direct. Sound like someone talking across a campfire, not an announcer, not a cartoon, and not a whisper.";
-const APP_VERSION = "1.7.5";
+const APP_VERSION = "1.7.6";
 const PUBLIC_DIR = fileURLToPath(new URL("./public/", import.meta.url));
 const PUBLIC_INDEX = fileURLToPath(new URL("./public/index.html", import.meta.url));
 
@@ -243,7 +244,9 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
 
   const steamKey = String(env.STEAM_API_KEY || "").trim();
   const steamNonce = steamSessions || createSteamSessions();
-  const links = linkHub || createLinkHub();
+  const linkStore = env.LINK_STORE_PATH
+    || join(dirname(fileURLToPath(import.meta.url)), "data", "link-sessions.json");
+  const links = linkHub || createLinkHub({ storePath: linkStore });
   const places = loadPlaceIndex();
   let schemaCache = null;
   let schemaCachedAt = 0;
@@ -347,7 +350,7 @@ export function createApp({ env = process.env, fetchImpl = globalThis.fetch, log
     const code = String(req.body?.code || "");
     if (!/^\d{6}$/.test(code)) return res.status(400).json({ error: "Enter the 6-digit code from Frontier Guide." });
     const claimed = links.claim(code);
-    if (!claimed) return res.status(404).json({ error: "That pairing code is expired or already used." });
+    if (!claimed) return res.status(404).json({ error: "That pairing code expired. Tap Show pairing code again." });
     return res.json(claimed);
   });
 

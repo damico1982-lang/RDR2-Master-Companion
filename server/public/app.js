@@ -3568,6 +3568,12 @@ renderSteamStatus();
 window.speechSynthesis?.getVoices?.();
 window.speechSynthesis?.addEventListener?.("voiceschanged", () => {});
 setInterval(pollLink, 8000);
+function keepServerAwake() {
+  if (!settings.api || settings.serverMode === "offline") return;
+  fetch(`${settings.api}/api/health`, { cache: "no-store" }).catch(() => {});
+}
+keepServerAwake();
+setInterval(keepServerAwake, 4 * 60 * 1000);
 
 function steamId() {
   return localStorage.getItem("fg_steam_id") || "";
@@ -3775,7 +3781,14 @@ async function pollLink() {
     });
     localStorage.setItem("fg_link_since", String(page.next ?? since));
     applyLinkEvents(page.events || []);
-  } catch { /* pairing can expire; the next code replaces it */ }
+  } catch (error) {
+    if (error.status !== 404) return;
+    localStorage.removeItem("fg_link_token");
+    const code = $("#linkCode");
+    if (code) code.hidden = true;
+    const label = $("#linkStatus");
+    if (label) label.textContent = "That pairing code expired. Tap Show pairing code again.";
+  }
 }
 
 let progressPull = 0;

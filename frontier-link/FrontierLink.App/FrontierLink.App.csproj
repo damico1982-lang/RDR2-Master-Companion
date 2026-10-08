@@ -8,7 +8,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>FrontierLink</AssemblyName>
     <RootNamespace>FrontierLink</RootNamespace>
-    <Version>1.7.0</Version>
+    <Version>1.7.6</Version>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\FrontierLink.Core\FrontierLink.Core.csproj" />

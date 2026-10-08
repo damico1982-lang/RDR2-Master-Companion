@@ -1,4 +1,6 @@
 import { randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 
 function token() {
   return randomBytes(24).toString("base64url");
@@ -10,17 +12,62 @@ function same(left, right) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-export function createLinkHub({ now = Date.now, ttlMs = 10 * 60 * 1000, maxSessions = 200 } = {}) {
+function readRows(storePath) {
+  try {
+    const parsed = JSON.parse(readFileSync(storePath, "utf8"));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function createLinkHub({ now = Date.now, ttlMs = 10 * 60 * 1000, maxSessions = 200, storePath = "" } = {}) {
   const sessions = new Map();
+  if (storePath) {
+    for (const item of readRows(storePath)) {
+      if (!item?.phoneToken || !item.code || Number(item.expires) <= now()) continue;
+      sessions.set(String(item.phoneToken), {
+        code: String(item.code),
+        phoneToken: String(item.phoneToken),
+        helperToken: String(item.helperToken || ""),
+        failedClaims: Number(item.failedClaims) || 0,
+        expires: Number(item.expires),
+        frame: null,
+        events: Array.isArray(item.events) ? item.events.slice(-50) : []
+      });
+    }
+  }
+
+  function remember() {
+    if (!storePath) return;
+    mkdirSync(dirname(storePath), { recursive: true });
+    const rows = [...sessions.values()].map(entry => ({
+      code: entry.code,
+      phoneToken: entry.phoneToken,
+      helperToken: entry.helperToken,
+      failedClaims: entry.failedClaims,
+      expires: entry.expires,
+      events: entry.events
+    }));
+    const temp = `${storePath}.tmp`;
+    writeFileSync(temp, JSON.stringify(rows));
+    renameSync(temp, storePath);
+  }
 
   function prune() {
+    let changed = false;
     for (const [key, entry] of sessions) {
-      if (entry.expires <= now()) sessions.delete(key);
+      if (entry.expires <= now()) {
+        sessions.delete(key);
+        changed = true;
+      }
     }
     while (sessions.size > maxSessions) {
       const oldest = sessions.keys().next().value;
       sessions.delete(oldest);
+      changed = true;
     }
+    if (changed) remember();
   }
 
   function byToken(value) {
@@ -58,6 +105,7 @@ export function createLinkHub({ now = Date.now, ttlMs = 10 * 60 * 1000, maxSessi
         events: []
       };
       sessions.set(phoneToken, entry);
+      remember();
       return { code, token: phoneToken, expiresAt: new Date(entry.expires).toISOString() };
     },
     claim(code) {
@@ -68,11 +116,13 @@ export function createLinkHub({ now = Date.now, ttlMs = 10 * 60 * 1000, maxSessi
         if (entry) {
           entry.failedClaims += 1;
           if (entry.failedClaims > 8) sessions.delete(entry.phoneToken);
+          remember();
         }
         return null;
       }
       entry.helperToken = token();
       entry.expires = now() + ttlMs;
+      remember();
       return { token: entry.helperToken, expiresAt: new Date(entry.expires).toISOString() };
     },
     status(value) {
@@ -88,6 +138,7 @@ export function createLinkHub({ now = Date.now, ttlMs = 10 * 60 * 1000, maxSessi
         capturedAt: capturedAt || new Date(now()).toISOString()
       };
       entry.expires = now() + ttlMs;
+      remember();
       return true;
     },
     frame(value) {
@@ -110,6 +161,7 @@ export function createLinkHub({ now = Date.now, ttlMs = 10 * 60 * 1000, maxSessi
       }
       if (entry.events.length > 50) entry.events.splice(0, entry.events.length - 50);
       entry.expires = now() + ttlMs;
+      remember();
       return accepted;
     },
     events(value, since = 0) {

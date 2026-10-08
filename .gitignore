@@ -2,6 +2,7 @@ node_modules/
 server/.env
 server/.env.*
 !server/.env.example
+server/data/
 *.log
 
 android-native/.gradle/

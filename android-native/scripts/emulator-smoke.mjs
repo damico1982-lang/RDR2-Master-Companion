@@ -663,7 +663,7 @@ if (!progressBody.includes("Connect Steam") || /42\.5|Back in the Mud/.test(prog
   problems.push(`progress screen did not show the empty state: ${progressBody.slice(0, 180)}`);
 }
 await delay(400);
-shot("progress-empty-1.7.5");
+shot("progress-empty-1.7.6");
 
 await send("Page.enable").catch(() => {});
 async function mapShot(name, elementId, scale, x, y, detailName) {
@@ -702,12 +702,12 @@ async function mapShot(name, elementId, scale, x, y, detailName) {
   shot(name);
   return parsed;
 }
-await mapShot("map-full-1.7.5", "fieldMap", 1, 50, 50, "far");
-await assertMapInk("map-full-1.7.5", { road: 25, river: 10, border: 6 });
-await mapShot("map-mid-1.7.5", "fieldMap", 2.5, 62, 37, "mid");
-await assertMapInk("map-mid-1.7.5", { road: 40, river: 15, border: 8 });
-await mapShot("map-close-1.7.5", "fieldMap", 4.2, 72, 46, "close");
-await assertMapInk("map-close-1.7.5", { road: 12 });
+await mapShot("map-full-1.7.6", "fieldMap", 1, 50, 50, "far");
+await assertMapInk("map-full-1.7.6", { road: 25, river: 10, border: 6 });
+await mapShot("map-mid-1.7.6", "fieldMap", 2.5, 62, 37, "mid");
+await assertMapInk("map-mid-1.7.6", { road: 40, river: 15, border: 8 });
+await mapShot("map-close-1.7.6", "fieldMap", 4.2, 72, 46, "close");
+await assertMapInk("map-close-1.7.6", { road: 12 });
 async function maxShot(name, lat, lng) {
   const detail = await sendRetry("Runtime.evaluate", {
     expression: `(async () => {
@@ -748,14 +748,14 @@ async function maxShot(name, lat, lng) {
 // The road beside Valentine is just outside a zoom-7 frame centered on the
 // town label. This center keeps that road in frame. The river and county
 // border are farther south, so the mid-zoom shot is what asserts them.
-await maxShot("map-max-valentine-1.7.5", -52.2, 109.4);
-await assertMapInk("map-max-valentine-1.7.5", { road: 12 });
-await maxShot("map-max-saintdenis-1.7.5", -86.3787, 152.6896);
-await assertMapInk("map-max-saintdenis-1.7.5", { water: 80, coast: true });
-await maxShot("map-max-blackwater-1.7.5", -82.9581, 99.7447);
-await assertMapInk("map-max-blackwater-1.7.5", { water: 80, coast: true });
-await maxShot("map-max-strawberry-1.7.5", -70.03, 84.3196);
-await assertMapInk("map-max-strawberry-1.7.5", { road: 12 });
+await maxShot("map-max-valentine-1.7.6", -52.2, 109.4);
+await assertMapInk("map-max-valentine-1.7.6", { road: 12 });
+await maxShot("map-max-saintdenis-1.7.6", -86.3787, 152.6896);
+await assertMapInk("map-max-saintdenis-1.7.6", { water: 80, coast: true });
+await maxShot("map-max-blackwater-1.7.6", -82.9581, 99.7447);
+await assertMapInk("map-max-blackwater-1.7.6", { water: 80, coast: true });
+await maxShot("map-max-strawberry-1.7.6", -70.03, 84.3196);
+await assertMapInk("map-max-strawberry-1.7.6", { road: 12 });
 
 const layoutReport = await send("Runtime.evaluate", {
   expression: `(() => {
@@ -812,7 +812,7 @@ console.log("layers", JSON.stringify(layersLayout));
 if (layersLayout.name !== "All" || layersLayout.pressed !== "true" || !(Number(layersLayout.count) > 0) || (layersLayout.names || []).includes("None")) {
   problems.push(`layers sheet ${JSON.stringify(layersLayout)}`);
 }
-shot("layers-sheet-1.7.5");
+shot("layers-sheet-1.7.6");
 await send("Runtime.evaluate", {
   expression: `(() => { document.querySelector("#mapView .map-layers-toggle")?.click(); return "layers-closed"; })()`,
   returnByValue: true
@@ -859,19 +859,19 @@ if (!/Bayou Nwa,\s*Lemoyne/.test(bullCard.text || "") || /RDOMap|Story mode/.tes
 }
 if (!bullCard.sourceCollapsed) problems.push("source link is not inside a collapsed Source section");
 await delay(400);
-shot("map-card-bullgator-1.7.5");
+shot("map-card-bullgator-1.7.6");
 const arabianCard = await openMarker("horse-white-arabian");
 if (!/Lake Isabella/.test(arabianCard.text || "") || /RDOMap|Published White Arabian marker/.test(arabianCard.text || "")) {
   problems.push(`white arabian card copy: ${String(arabianCard.text || "").slice(0, 240)}`);
 }
 await delay(400);
-shot("map-card-whitearabian-1.7.5");
+shot("map-card-whitearabian-1.7.6");
 const gunsmithCard = await openMarker("gunsmith-valentine");
 if (!/Valentine,\s*New Hanover/.test(gunsmithCard.text || "") || /Published shop coordinate/.test(gunsmithCard.text || "") || !/ammunition/i.test(gunsmithCard.text || "")) {
   problems.push(`gunsmith card copy: ${String(gunsmithCard.text || "").slice(0, 240)}`);
 }
 await delay(400);
-shot("map-card-gunsmith-1.7.5");
+shot("map-card-gunsmith-1.7.6");
 
 spawnSync("adb", ["shell", "settings", "put", "system", "accelerometer_rotation", "0"]);
 spawnSync("adb", ["shell", "settings", "put", "system", "user_rotation", "1"]);
@@ -904,14 +904,31 @@ if (!landscapeLayout.open || !(landscapeLayout.cardBottom <= landscapeLayout.nav
 }
 if (landscapeSpread > 8) problems.push(`landscape nav wrapped: ${JSON.stringify(landscapeLayout.tops)}`);
 await delay(700);
-shot("map-landscape-card-1.7.5");
+shot("map-landscape-card-1.7.6");
 spawnSync("adb", ["shell", "settings", "put", "system", "user_rotation", "0"]);
 await delay(800);
 
 await show("hidden");
-shot("hidden-1.7.5");
+shot("hidden-1.7.6");
+await sendRetry("Runtime.evaluate", {
+  expression: `(() => {
+    if (typeof setView === "function") setView("settings");
+    const status = document.getElementById("linkStatus");
+    const code = document.getElementById("linkCode");
+    if (status) status.textContent = "Frontier Link is paired. Capture stays off until you turn it on in the helper.";
+    if (code) {
+      code.hidden = false;
+      code.textContent = "482913";
+    }
+    document.getElementById("linkCard")?.scrollIntoView({ block: "center", behavior: "auto" });
+    return "ok";
+  })()`,
+  returnByValue: true
+});
+await delay(500);
+shot("settings-link-paired-1.7.6");
 await show("home");
-shot("home-1.7.5");
+shot("home-1.7.6");
 const homeReport = await send("Runtime.evaluate", {
   expression: `(() => {
     const home = document.getElementById("homeView");

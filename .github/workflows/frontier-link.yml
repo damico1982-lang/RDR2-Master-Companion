@@ -47,3 +47,15 @@ jobs:
         with:
           name: FrontierLink-Setup
           path: frontier-link/publish/FrontierLink-Setup.exe
+      - name: Capture helper window states
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path frontier-link/screenshots | Out-Null
+          & .\frontier-link\publish\FrontierLink-Setup.exe --screenshots (Resolve-Path frontier-link/screenshots).Path
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontierlink-screenshots
+          path: frontier-link/screenshots/**
+          if-no-files-found: warn
