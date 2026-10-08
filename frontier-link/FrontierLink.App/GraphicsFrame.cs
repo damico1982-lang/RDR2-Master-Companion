@@ -70,7 +70,6 @@ static class GraphicsFrame
         {
             session?.Dispose();
             pool?.Dispose();
-            item?.Dispose();
         }
     }
 

@@ -101,7 +101,7 @@ static class WindowCapture
         using var stream = new MemoryStream();
         var codec = ImageCodecInfo.GetImageEncoders().First(item => item.FormatID == ImageFormat.Jpeg.Guid);
         using var parameters = new EncoderParameters(1);
-        parameters.Param[0] = new EncoderParameter(Encoder.Quality, 55L);
+        parameters.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 55L);
         small.Save(stream, codec, parameters);
         return "data:image/jpeg;base64," + Convert.ToBase64String(stream.ToArray());
     }
